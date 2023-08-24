@@ -118,6 +118,7 @@ int main(int argc, const char* argv[])
                         if (SetProcessAffinityMask(handle_process, desired_affinity_mask))
                         {
                             print_affinity_mask("New affinity mask", desired_affinity_mask);
+                            fprintf(stderr, "SUCCESSFUL!\n");
                         }
                         else
                         {
@@ -125,7 +126,6 @@ int main(int argc, const char* argv[])
                         }
 
                         fprintf(stderr, "\n");
-                        fprintf(stderr, "SUCCESSFUL!\n\n");
                     }
                     else
                     {
