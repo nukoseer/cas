@@ -7,6 +7,6 @@ Little command-line tool to set cpu affinity of a particular process on Windows.
 _Note: Some programs may require administrator rights._
 
 ## Media
-![Before][media/before.png]
-![Run][media/run.png]
-![After][media/after.png]
+![Before](media/before.png)
+![Run](media/run.png)
+![After](media/after.png)
