@@ -1,16 +1,48 @@
-#pragma warning(push, 0)
-#include <Windows.h>
-#include <tlhelp32.h>
-#pragma warning(pop)
-
-#include <stdio.h>
+#include <string.h>
 #include <stdlib.h>
 
-#pragma comment(lib, "Kernel32")
-#pragma comment(lib, "Advapi32")
+#include "cascheduler.h"
+#include "cascheduler_dialog.h"
 
-static const char* process_name;
-static unsigned int desired_affinity_mask;
+#pragma comment (lib, "Kernel32")
+#pragma comment (lib, "User32.lib")
+#pragma comment (lib, "Advapi32.lib")
+#pragma comment (lib, "Gdi32.lib")
+#pragma comment (lib, "Shlwapi.lib")
+
+#define CPU_AFFINITY_NAME         (L"CPU Affinity")
+#define CPU_AFFINITY_PROCESS_NAME ("cpu_affinity.exe")
+
+#define SETTINGS_FILE_NAME ("settings.txt")
+#define MILLISECONDS (1000)
+#define TIMER_PERIOD (MILLISECONDS * 5)
+
+static HANDLE timer_handle;
+
+#ifdef _DEBUG
+#include <stdio.h>
+#include <stdarg.h>
+
+#define DEBUG_FILE_NAME ("debug.txt")
+
+static HANDLE debug_file_handle;
+
+static void write_file(const char* fmt, ...)
+{
+    DWORD bytes_written = 0;
+    va_list args;
+    char temp[512] = { 0 };
+    int length = 0;
+
+    va_start(args, fmt);
+    length = vsnprintf(temp, 511, fmt, args);
+    va_end(args);
+
+    if (length > 0)
+    {
+        WriteFile(debug_file_handle, temp, length, &bytes_written, 0);
+    }
+}
 
 static void print_bits(const char* label, unsigned int bits)
 {
@@ -19,59 +51,181 @@ static void print_bits(const char* label, unsigned int bits)
     unsigned int mask = 0x80000000;
 
     if (label)
-        fprintf(stderr, "%s ", label);
+        write_file("%s ", label);
 
     for (i = 0; i < size; ++i)
     {
-        fprintf(stderr, "%d", !!(bits & mask));
+        write_file("%d", !!(bits & mask));
         mask >>= 1;
     }
 
-    fprintf(stderr, "\n");
+    write_file("\n");
 }
 
 static void print_affinity_mask(const char* label, unsigned int affinity_mask)
 {
-    fprintf(stderr, "  %s:\n", label);
-    fprintf(stderr, "    Hex   : 0x%X\n", (unsigned int)affinity_mask);
+    write_file("  %s:\n", label);
+    write_file("    Hex   : 0x%X\n", (unsigned int)affinity_mask);
     print_bits("    Binary:", affinity_mask);
 }
 
-static int parse_args(int argc, const char* argv[])
+#else
+#define write_file(...)
+#define print_bits(...)
+#define print_affinity_mask(...)
+#endif
+
+typedef struct ProcessAffinity
 {
-    int result = 0;
+    char name[MAX_PATH];
+    unsigned int mask;
+} ProcessAffinity;
 
-    if (argc == 3)
+static ProcessAffinity process_affinities[16];
+static unsigned int process_affinity_count;
+
+static char* get_line(char* line, unsigned int* line_size, char* buffer)
+{
+    char* current = buffer;
+    
+    while (*current != '\0')
     {
-        const char* str_affinity_mask = argv[2];
-
-        process_name = argv[1];
-
-        if (str_affinity_mask[0] == '0' && (str_affinity_mask[1] == 'x' || str_affinity_mask[1] == 'X'))
+        if (*current == '\n' || *current == '\r')
         {
-            desired_affinity_mask = strtol(str_affinity_mask, 0, 0);
+            break;
         }
-        else
-        {
-            desired_affinity_mask = strtol(str_affinity_mask, 0, 10);
-        }
+
+        ++current;
     }
 
-    if (process_name && desired_affinity_mask)
+    *line_size = (unsigned int)(current - buffer);
+
+    if (*line_size && *line_size < MAX_PATH)
     {
-        result = 1;
+        memcpy(line, buffer, *line_size);
+    }
+    else
+    {
+        *line_size = 0;
     }
 
-    return result;
+    if (*current == '\r')
+    {
+        current += 2;
+    }
+    
+    return current;
+}
+
+static void read_settings(void)
+{
+    HANDLE settings_handle = CreateFile(SETTINGS_FILE_NAME, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+    DWORD file_size = 0;
+    DWORD bytes_read = 0;
+    char* file_buffer = 0;
+
+    if (settings_handle != INVALID_HANDLE_VALUE)
+    {
+        file_size = GetFileSize(settings_handle, 0);
+        file_buffer = malloc(file_size + 1);
+        memset(file_buffer, 0, file_size + 1);
+    }
+    else
+    {
+        write_file("%s could not open!\n", SETTINGS_FILE_NAME);
+        ASSERT(0);
+    }
+
+    if (file_buffer)
+    {
+        ReadFile(settings_handle, file_buffer, file_size, &bytes_read, 0);
+    }
+    else
+    {
+        write_file("Allocation is failed!\n");
+        ASSERT(0);
+    }
+
+    if (file_size && file_size == bytes_read)
+    {
+        unsigned int i = 0;
+
+        for (i = 0; i < ARRAY_COUNT(process_affinities); ++i)
+        {
+            ProcessAffinity* process_affinity = process_affinities + i;
+            char line[MAX_PATH] = { 0 };
+            unsigned int line_size = 0;
+
+            file_buffer = get_line(line, &line_size, file_buffer);
+
+            if (line_size > 0)
+            {
+                memcpy(process_affinity->name, line, line_size);
+            }
+            else
+            {
+                break;
+            }
+
+            memset(line, 0, MAX_PATH);
+            line_size = 0;
+            file_buffer = get_line(line, &line_size, file_buffer);
+
+            if (line_size > 0)
+            {
+                unsigned int mask = 0;
+
+                if (line[0] == '0' && (line[1] == 'x' || line[2] == 'X'))
+                {
+                    mask = strtol(line, 0, 0);
+                }
+                else
+                {
+                    mask = strtol(line, 0, 10);
+                }
+
+                if (mask)
+                {
+                    process_affinity->mask = mask;
+                }
+                else
+                {
+                    write_file("Affinity mask format is wrong for %s!", process_affinity->name);
+                    ASSERT(0);
+                }
+            }
+            else
+            {
+                break;
+            }
+
+            if (process_affinity->name && process_affinity->mask)
+            {
+                ++process_affinity_count;
+            }
+        }
+        
+        CloseHandle(settings_handle);
+    }
+    else
+    {
+        write_file("File could not read!\n");
+        ASSERT(0);
+    }
+
+    if (!process_affinity_count)
+    {
+        write_file("%s does not have enough proecss-affinity pairs!", SETTINGS_FILE_NAME);
+    }
 }
 
 static void enable_debug_privilege(void)
 {
-    HANDLE handle_token = 0;
+    HANDLE token_handle = 0;
     LUID luid = { 0 };
     TOKEN_PRIVILEGES tkp = { 0 };
 
-    OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &handle_token);
+    OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &token_handle);
 
     LookupPrivilegeValue(NULL, SE_DEBUG_NAME, &luid);
 
@@ -79,82 +233,197 @@ static void enable_debug_privilege(void)
     tkp.Privileges[0].Luid = luid;
     tkp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
 
-    AdjustTokenPrivileges(handle_token, 0, &tkp, sizeof(tkp), NULL, NULL);
+    AdjustTokenPrivileges(token_handle, 0, &tkp, sizeof(tkp), NULL, NULL);
 
-    CloseHandle(handle_token);
+    CloseHandle(token_handle);
 }
 
-int main(int argc, const char* argv[])
+static int find_process_by_name(const char* process_name, PROCESSENTRY32* entry)
 {
-    if (parse_args(argc, argv))
+    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+
+    if (Process32First(snapshot, entry))
     {
-        int found = 0;
-        PROCESSENTRY32 entry = { .dwSize = sizeof(PROCESSENTRY32) };
-        HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-
-        enable_debug_privilege();
-
-        if (Process32First(snapshot, &entry))
-        {
-            while (Process32Next(snapshot, &entry))
+        do {
+            if (!strcmp(entry->szExeFile, process_name))
             {
-                if (!strcmp(entry.szExeFile, process_name))
-                {
-                    HANDLE handle_process = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_SET_INFORMATION, FALSE, entry.th32ProcessID);
-                    DWORD process_affinity_mask = 0;
-                    DWORD system_affinity_mask = 0;
-
-                    found = 1;
-
-                    if (handle_process)
-                    {
-                        fprintf(stderr, "Setting affinity mask 0x%X for %s:\n", desired_affinity_mask, entry.szExeFile);
-
-                        if (GetProcessAffinityMask(handle_process, (PDWORD_PTR)&process_affinity_mask, (PDWORD_PTR)&system_affinity_mask))
-                        {
-                            print_affinity_mask("Initial affinity mask", process_affinity_mask);
-                        }
-
-                        if (SetProcessAffinityMask(handle_process, desired_affinity_mask))
-                        {
-                            print_affinity_mask("New affinity mask", desired_affinity_mask);
-                            fprintf(stderr, "SUCCESSFUL!\n");
-                        }
-                        else
-                        {
-                            fprintf(stderr, "  Could not set!\n");
-                        }
-
-                        fprintf(stderr, "\n");
-                    }
-                    else
-                    {
-                        fprintf(stderr, "'%s' could not open. Please try to run set_cpu_affinity as administrator.\n", process_name);
-                        fprintf(stderr, "FAILED!\n");
-                    }
-
-                    CloseHandle(handle_process);
-                }
+                CloseHandle(snapshot);
+                return 1;
             }
+        } while (Process32Next(snapshot, entry));
+    }
 
-            if (!found)
+    CloseHandle(snapshot);
+
+    return 0;
+}
+
+static void set_cpu_affinity(PROCESSENTRY32* entry, ProcessAffinity* process_affinity)
+{
+    HANDLE handle_process = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_SET_INFORMATION, FALSE, entry->th32ProcessID);
+    DWORD process_affinity_mask = 0;
+    DWORD system_affinity_mask = 0;
+    unsigned int desired_affinity_mask = process_affinity->mask;
+    
+    if (handle_process)
+    {
+        write_file("Setting affinity mask 0x%X for %s:\n", desired_affinity_mask, entry->szExeFile);
+
+        GetProcessAffinityMask(handle_process, (PDWORD_PTR)&process_affinity_mask, (PDWORD_PTR)&system_affinity_mask);
+
+        print_affinity_mask("Initial affinity mask", process_affinity_mask);
+
+        if (process_affinity_mask != desired_affinity_mask)
+        {
+            SetProcessAffinityMask(handle_process, desired_affinity_mask);
+            GetProcessAffinityMask(handle_process, (PDWORD_PTR)&process_affinity_mask, (PDWORD_PTR)&system_affinity_mask);
+
+            if (process_affinity_mask == desired_affinity_mask)
             {
-                fprintf(stderr, "'%s' could not find.\n", process_name);
-                fprintf(stderr, "FAILED!\n");
+                print_affinity_mask("New affinity mask", desired_affinity_mask);
+                write_file("SUCCESSFUL!\n");
+            }
+            else
+            {
+                write_file("  Could not set!\n");
             }
         }
 
-        CloseHandle(snapshot);
+        write_file("\n");
+        CloseHandle(handle_process);
     }
     else
     {
-        fprintf(stderr, "Usage: set_cpu_affinity <process_name> <affinity_mask (0xHEX or INTEGER)>");
+        write_file("'%s' could not open. Please try to run %s as administrator.\n", CPU_AFFINITY_PROCESS_NAME, process_affinity->name);
+        write_file("FAILED!\n");
     }
+}
 
+static void cpu_affinity_routine(void)
+{
+    unsigned int i = 0;
+            
+    for (i = 0; i < process_affinity_count; ++i)
     {
-        unsigned int c = getchar();
-        (void)c;
+        ProcessAffinity* process_affinity = process_affinities + i;
+        PROCESSENTRY32 entry = { .dwSize = sizeof(PROCESSENTRY32) };
+        HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+
+        if (Process32First(snapshot, &entry))
+        {
+            do
+            {
+                // write_file("[%s] == [%s]\n", entry.szExeFile, process_affinity->name);
+                if (!strcmp(entry.szExeFile, process_affinity->name))
+                {
+                    set_cpu_affinity(&entry, process_affinity);
+                }
+            } while (Process32Next(snapshot, &entry));
+
+        }
+        CloseHandle(snapshot);
+    }
+}
+
+static void set_timer(void)
+{
+    FILETIME file_time = { 0 };
+    LARGE_INTEGER due_time = { 0 };
+    BOOL is_timer_set = 0;
+
+    GetSystemTimeAsFileTime(&file_time);
+
+    timer_handle = CreateWaitableTimerW(0, 0, 0);
+    ASSERT(timer_handle);
+
+    due_time.LowPart = file_time.dwLowDateTime;
+    due_time.HighPart = file_time.dwHighDateTime;
+
+    is_timer_set = SetWaitableTimer(timer_handle, &due_time, TIMER_PERIOD, 0, 0, 0);
+    ASSERT(is_timer_set);
+}
+
+static LRESULT CALLBACK window_proc(HWND window_handle, UINT message, WPARAM wparam, LPARAM lparam)
+{
+    return DefWindowProcW(window_handle, message, wparam, lparam);
+}
+
+static HWND window;
+static CASchedulerDialogConfig global_dialog_config;
+
+#ifdef _DEBUG
+int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, int n_show_cmd)
+{
+    (void)instance, (void)prev_instance, (void)cmd_line, (void)n_show_cmd;
+#else
+void WinMainCRTStartup(void)
+{
+#endif
+#ifdef _DEBUG
+    debug_file_handle = CreateFile(DEBUG_FILE_NAME, GENERIC_WRITE, FILE_SHARE_READ, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
+#endif
+    PROCESSENTRY32 entry;
+
+    if (find_process_by_name(CPU_AFFINITY_PROCESS_NAME, &entry) && GetCurrentProcessId() != entry.th32ProcessID)
+    {
+        write_file("%s is already running!", CPU_AFFINITY_PROCESS_NAME);
+        ExitProcess(0);   
     }
 
-    return 0;
+    WNDCLASSEXW window_class =
+	{
+		.cbSize = sizeof(window_class),
+		.lpfnWndProc = &window_proc,
+		.hInstance = GetModuleHandle(0),
+		.lpszClassName = CPU_AFFINITY_NAME,
+	};
+    
+    // char exe_folder[MAX_PATH];
+    // GetModuleFileName(NULL, exe_folder, ARRAY_COUNT(exe_folder));
+	// PathRemoveFileSpec(exe_folder);
+	// write_file("path: %s\n", exe_folder);
+
+    ATOM atom = RegisterClassExW(&window_class);
+	ASSERT(atom);
+
+	RegisterWindowMessageW(L"TaskbarCreated");
+
+    window = CreateWindowExW(0, window_class.lpszClassName, window_class.lpszClassName, WS_POPUP,
+                             CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+                             NULL, NULL, window_class.hInstance, NULL);
+    
+    enable_debug_privilege();
+    read_settings();
+    set_timer();
+    cascheduler_dialog_config_load(&global_dialog_config);
+    cascheduler_dialog_show(&global_dialog_config);
+
+    for (;;)
+	{
+        DWORD wait = MsgWaitForMultipleObjects(1, &timer_handle, FALSE, INFINITE, QS_ALLINPUT);
+        write_file("wait: %d\n", (int)wait);
+
+		if (wait == WAIT_OBJECT_0)
+		{
+            cpu_affinity_routine();
+ 		}
+		else if (wait == WAIT_OBJECT_0 + 1)
+		{
+            MSG message;
+            BOOL result = GetMessageW(&message, NULL, 0, 0);
+
+            if (result == 0)
+            {
+                ExitProcess(0);
+            }
+            ASSERT(result > 0);
+
+            TranslateMessage(&message);
+            DispatchMessageW(&message);
+		}
+        else
+        {
+            ASSERT(0);
+        }
+	}
 }
