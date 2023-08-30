@@ -284,7 +284,7 @@ static LRESULT CALLBACK cascheduler_dialog_proc(HWND window, UINT message, WPARA
                 {
                     unsigned int result = bits_to_integer(bit_mask_string, bit_mask_length);
                 
-                    _snwprintf(hex_value_string, ARRAY_COUNT(hex_value_string), L"%u", result);
+                    _snwprintf(hex_value_string, ARRAY_COUNT(hex_value_string), L"%X", result);
                     SetDlgItemTextW(window, ID_HEX_VALUE, hex_value_string);
                 }
                 else
