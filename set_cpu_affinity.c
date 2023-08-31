@@ -5,19 +5,24 @@
 #include "cascheduler_dialog.h"
 
 #pragma comment (lib, "Kernel32")
-#pragma comment (lib, "User32.lib")
-#pragma comment (lib, "Advapi32.lib")
-#pragma comment (lib, "Gdi32.lib")
-#pragma comment (lib, "Shlwapi.lib")
+#pragma comment (lib, "User32")
+#pragma comment (lib, "Advapi32")
+#pragma comment (lib, "Gdi32")
+#pragma comment (lib, "Shlwapi")
+#pragma comment (lib, "Shell32")
 
-#define CPU_AFFINITY_NAME         (L"CPU Affinity")
-#define CPU_AFFINITY_PROCESS_NAME ("cpu_affinity.exe")
-
+#define CASCHEDULER_NAME          (L"CPU Affinity Scheduler")
+#define CASCHEDULER_PROCESS_NAME  ("cpu_affinity.exe")
+#define CASCHEDULER_INI           (L"CPUAffinityScheduler.ini")
 #define SETTINGS_FILE_NAME ("settings.txt")
 #define MILLISECONDS (1000)
 #define TIMER_PERIOD (MILLISECONDS * 5)
 
+#define WM_CASCHEDULER_COMMAND (WM_USER + 0)
+
 static HANDLE timer_handle;
+static WCHAR global_ini_path[sizeof(CASCHEDULER_INI)];
+static HICON global_icon;
 
 #ifdef _DEBUG
 #include <stdio.h>
@@ -294,7 +299,7 @@ static void set_cpu_affinity(PROCESSENTRY32* entry, ProcessAffinity* process_aff
     }
     else
     {
-        write_file("'%s' could not open. Please try to run %s as administrator.\n", CPU_AFFINITY_PROCESS_NAME, process_affinity->name);
+        write_file("'%s' could not open. Please try to run %s as administrator.\n", CASCHEDULER_PROCESS_NAME, process_affinity->name);
         write_file("FAILED!\n");
     }
 }
@@ -345,6 +350,21 @@ static void set_timer(void)
 
 static LRESULT CALLBACK window_proc(HWND window_handle, UINT message, WPARAM wparam, LPARAM lparam)
 {
+    if (message == WM_CREATE)
+    {
+        NOTIFYICONDATAW data =
+        {
+            .cbSize = sizeof(data),
+            .hWnd = window_handle,
+            .uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP,
+            .uCallbackMessage = WM_CASCHEDULER_COMMAND,
+            .hIcon = global_icon,
+        };
+        StrCpyNW(data.szInfoTitle, CASCHEDULER_NAME, ARRAY_COUNT(data.szInfoTitle));
+        Shell_NotifyIconW(NIM_ADD, &data);
+
+        return 0;
+    }
     return DefWindowProcW(window_handle, message, wparam, lparam);
 }
 
@@ -362,27 +382,38 @@ void WinMainCRTStartup(void)
 #ifdef _DEBUG
     debug_file_handle = CreateFile(DEBUG_FILE_NAME, GENERIC_WRITE, FILE_SHARE_READ, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
 #endif
-    PROCESSENTRY32 entry;
 
-    if (find_process_by_name(CPU_AFFINITY_PROCESS_NAME, &entry) && GetCurrentProcessId() != entry.th32ProcessID)
-    {
-        write_file("%s is already running!", CPU_AFFINITY_PROCESS_NAME);
-        ExitProcess(0);   
-    }
+	// PROCESSENTRY32 entry;
+
+    // if (find_process_by_name(CASCHEDULER_PROCESS_NAME, &entry) && GetCurrentProcessId() != entry.th32ProcessID)
+    // {
+    //     write_file("%s is already running!", CASCHEDULER_PROCESS_NAME);
+    //     ExitProcess(0);   
+    // }
 
     WNDCLASSEXW window_class =
 	{
 		.cbSize = sizeof(window_class),
 		.lpfnWndProc = &window_proc,
 		.hInstance = GetModuleHandle(0),
-		.lpszClassName = CPU_AFFINITY_NAME,
+		.lpszClassName = CASCHEDULER_NAME,
 	};
-    
-    // char exe_folder[MAX_PATH];
-    // GetModuleFileName(NULL, exe_folder, ARRAY_COUNT(exe_folder));
-	// PathRemoveFileSpec(exe_folder);
-	// write_file("path: %s\n", exe_folder);
 
+    HWND existing = FindWindowW(window_class.lpszClassName, NULL);
+	if (existing)
+	{
+		// PostMessageW(Existing, WM_TWITCH_NOTIFY_ALREADY_RUNNING, 0, 0);
+		ExitProcess(0);
+	}
+    
+    WCHAR exe_folder[MAX_PATH];
+    GetModuleFileNameW(NULL, exe_folder, ARRAY_COUNT(exe_folder));
+	PathRemoveFileSpecW(exe_folder);
+    PathCombineW(global_ini_path, exe_folder, CASCHEDULER_INI);
+	write_file("global_ini_path: %s\n", global_ini_path);
+
+    global_icon = LoadIconW(GetModuleHandleW(0), MAKEINTRESOURCEW(1));
+    
     ATOM atom = RegisterClassExW(&window_class);
 	ASSERT(atom);
 

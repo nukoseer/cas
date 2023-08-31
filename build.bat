@@ -12,7 +12,7 @@ rem /wd4774 /wd4062 /wd4201
 
 set debug_linker_flags=/debug
 set release_linker_flags=/fixed /opt:icf /opt:ref libvcruntime.lib ucrt.lib
-set common_linker_flags=/incremental:no /SUBSYSTEM:WINDOWS /MANIFEST:EMBED /MANIFESTINPUT:..\cascheduler.manifest
+set common_linker_flags=/incremental:no /SUBSYSTEM:WINDOWS /MANIFEST:EMBED /MANIFESTINPUT:..\cascheduler.manifest /merge:_RDATA=.rdata
 
 set debug=yes
 set compiler=cl
@@ -25,7 +25,8 @@ if %debug%==yes (
    set common_linker_flags=%common_linker_flags% %release_linker_flags%
 )
 
-%compiler% %common_compiler_flags% ..\set_cpu_affinity.c ..\cascheduler_dialog.c /link %common_linker_flags% /out:set_cpu_affinity.exe
+rc.exe /nologo ..\cascheduler.rc 
+%compiler% %common_compiler_flags% ..\set_cpu_affinity.c ..\cascheduler_dialog.c /link ..\cascheduler.res %common_linker_flags% /out:set_cpu_affinity.exe 
 
 popd
 

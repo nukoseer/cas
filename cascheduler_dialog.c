@@ -260,7 +260,7 @@ static LRESULT CALLBACK cascheduler_dialog_proc(HWND window, UINT message, WPARA
         {
             // TODO: Probably we should not do it here? Or not like this.
             EndDialog(window, 0);
-            ExitProcess(0);
+            // ExitProcess(0);
         }
         else if (control == ID_BIT_MASK)
         {
