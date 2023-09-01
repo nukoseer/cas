@@ -10,9 +10,6 @@
 #define BUTTON_WIDTH 50
 #define ITEM_HEIGHT  14
 
-#define ID_START 1
-#define ID_STOP  2
-#define ID_QUIT  3
 #define ID_PROCESS 100
 #define ID_AFFINITY_MASK 200
 #define ID_BIT_MASK 300
@@ -64,24 +61,22 @@ typedef struct
     WORD font_size;
 } CASchedulerDialogLayout;
 
+typedef struct
+{
+    CASchedulerDialogCallback* callback;
+    void* parameter;
+} CASchedulerDialogCallbackStruct;
+
+static HWND global_dialog_window;
+static int global_started;
+static CASchedulerDialogCallbackStruct global_dialog_callbacks[3];
+static unsigned int global_dialog_callback_count;
+
 static void* cascheduler_dialog_align(BYTE* data, SIZE_T size)
 {
 	SIZE_T pointer = (SIZE_T)data;
 	return data + ((pointer + size - 1) & ~(size - 1)) - pointer;
 }
-
-static HWND global_dialog_window;
-static int global_started;
-
-// typedef struct
-// {
-//     WCHAR* processes[MAX_ITEMS];
-// 	WCHAR* affinity_masks[MAX_ITEMS];
-// } CASchedulerProcessAffinity;
-
-// static CASchedulerProcessAffinity process_affinitities;
-
-#define INI_PATH (L"C:\\Programming\\set-cpu-affinity\\build\\CPUAffinityScheduler.ini")
 
 static void cascheduler_dialog_set_values(HWND window, CASchedulerDialogConfig* dialog_config)
 {
@@ -92,11 +87,11 @@ static void cascheduler_dialog_set_values(HWND window, CASchedulerDialogConfig* 
     }
 }
 
-void cascheduler_dialog_config_load(CASchedulerDialogConfig* dialog_config)
+void cascheduler_dialog_config_load(CASchedulerDialogConfig* dialog_config, WCHAR* ini_path)
 {
     WIN32_FILE_ATTRIBUTE_DATA data;
 
-	if (!GetFileAttributesExW(INI_PATH, GetFileExInfoStandard, &data))
+	if (!GetFileAttributesExW(ini_path, GetFileExInfoStandard, &data))
 	{
 		// .ini file deleted?
 		return;
@@ -106,7 +101,7 @@ void cascheduler_dialog_config_load(CASchedulerDialogConfig* dialog_config)
 
     GetPrivateProfileSectionW(L"settings",
                               settings, ARRAY_COUNT(settings),
-                              INI_PATH);
+                              ini_path);
     
     WCHAR* pointer = settings;
     int pointer_length = 0;
@@ -179,8 +174,6 @@ static unsigned int bits_to_integer(const WCHAR* bits, int length)
 
 static LRESULT CALLBACK cascheduler_dialog_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
 {
-    (void)wparam;
-    
     if (message == WM_INITDIALOG)
 	{
         CASchedulerDialogConfig* dialog_config = (CASchedulerDialogConfig*)lparam;
@@ -189,6 +182,20 @@ static LRESULT CALLBACK cascheduler_dialog_proc(HWND window, UINT message, WPARA
 
         cascheduler_dialog_set_values(window, dialog_config);
 
+        if (global_started)
+        {
+            for (unsigned int i = 0; i < MAX_ITEMS; ++i)
+            {
+                WCHAR process_string[64] = { 0 };
+                WCHAR affinity_mask_string[64] = { 0 };
+
+                GetDlgItemTextW(window, ID_PROCESS + i, process_string, ARRAY_COUNT(process_string));
+                GetDlgItemTextW(window, ID_AFFINITY_MASK + i, affinity_mask_string, ARRAY_COUNT(affinity_mask_string));
+                EnableWindow(GetDlgItem(window, ID_PROCESS + i), 0);
+                EnableWindow(GetDlgItem(window, ID_AFFINITY_MASK + i), 0);
+            }
+        }
+        
         // SetDlgItemInt(window, 100, 0, FALSE);
         
         // SendDlgItemMessageW(window, 100, WM_CTLCOLORSTATIC, RGB(0, 144, 0), 0);
@@ -216,6 +223,10 @@ static LRESULT CALLBACK cascheduler_dialog_proc(HWND window, UINT message, WPARA
 
 		return TRUE;
     }
+    else if (message == WM_DESTROY)
+    {
+        global_dialog_window = 0;
+    }
     else if (message == WM_COMMAND)
 	{
         int control = LOWORD(wparam);
@@ -236,10 +247,17 @@ static LRESULT CALLBACK cascheduler_dialog_proc(HWND window, UINT message, WPARA
                     GetDlgItemTextW(window, ID_AFFINITY_MASK + i, affinity_mask_string, ARRAY_COUNT(affinity_mask_string));
                     EnableWindow(GetDlgItem(window, ID_PROCESS + i), 0);
                     EnableWindow(GetDlgItem(window, ID_AFFINITY_MASK + i), 0);
-                }   
-            }
+                }
 
-           return TRUE;
+                CASchedulerDialogCallbackStruct* dialog_callback_struct = global_dialog_callbacks + ID_START;
+
+                if (dialog_callback_struct->callback)
+                {
+                    dialog_callback_struct->callback(dialog_callback_struct->parameter);
+                }
+                
+                return TRUE;
+            }
         }
         else if (control == ID_STOP)
         {
@@ -251,16 +269,24 @@ static LRESULT CALLBACK cascheduler_dialog_proc(HWND window, UINT message, WPARA
                 {
                     EnableWindow(GetDlgItem(window, ID_PROCESS + i), 1);
                     EnableWindow(GetDlgItem(window, ID_AFFINITY_MASK + i), 1);
-                }   
-            }
+                }
 
-            return TRUE;
+                CASchedulerDialogCallbackStruct* dialog_callback_struct = global_dialog_callbacks + ID_STOP;
+
+                if (dialog_callback_struct->callback)
+                {
+                    dialog_callback_struct->callback(dialog_callback_struct->parameter);
+                }
+
+                return TRUE;
+            }
         }
-        else if (control == ID_QUIT)
+        else if (control == ID_CANCEL)
         {
             // TODO: Probably we should not do it here? Or not like this.
             EndDialog(window, 0);
             // ExitProcess(0);
+            return TRUE;
         }
         else if (control == ID_BIT_MASK)
         {
@@ -411,10 +437,10 @@ static void cascheduler_do_dialog_layout(const CASchedulerDialogLayout* dialog_l
 	button_x += BUTTON_WIDTH + PADDING;
     (void)stop_buffer;
 
-	DLGITEMTEMPLATE* quit_buffer = cascheduler_dialog_align(buffer, sizeof(DWORD));
-	buffer = cascheduler_do_dialog_item(buffer, "Quit", ID_QUIT, CONTROL_BUTTON, WS_TABSTOP | BS_PUSHBUTTON, button_x, button_y, BUTTON_WIDTH, ITEM_HEIGHT);
+	DLGITEMTEMPLATE* cancel_buffer = cascheduler_dialog_align(buffer, sizeof(DWORD));
+	buffer = cascheduler_do_dialog_item(buffer, "Cancel", ID_CANCEL, CONTROL_BUTTON, WS_TABSTOP | BS_PUSHBUTTON, button_x, button_y, BUTTON_WIDTH, ITEM_HEIGHT);
 	button_x += BUTTON_WIDTH + PADDING;
-    (void)quit_buffer;
+    (void)cancel_buffer;
 
 	for (const CASchedulerDialogGroup* group = dialog_layout->groups; group->caption; group++)
 	{
@@ -499,7 +525,7 @@ static void cascheduler_do_dialog_layout(const CASchedulerDialogLayout* dialog_l
 	ASSERT(buffer <= end);
 }
 
-BOOL cascheduler_dialog_show(CASchedulerDialogConfig* dialog_config)
+LRESULT cascheduler_dialog_show(CASchedulerDialogConfig* dialog_config)
 {
 	if (global_dialog_window)
 	{
@@ -548,5 +574,16 @@ BOOL cascheduler_dialog_show(CASchedulerDialogConfig* dialog_config)
 	BYTE __declspec(align(4)) buffer[4096];
 	cascheduler_do_dialog_layout(&dialog_layout, buffer, sizeof(buffer));
 
-	return (BOOL)DialogBoxIndirectParamW(GetModuleHandleW(NULL), (LPCDLGTEMPLATEW)buffer, NULL, cascheduler_dialog_proc, (LPARAM)dialog_config);
+	return DialogBoxIndirectParamW(GetModuleHandleW(NULL), (LPCDLGTEMPLATEW)buffer, NULL, cascheduler_dialog_proc, (LPARAM)dialog_config);
+}
+
+void cascheduler_dialog_register_callback(CASchedulerDialogCallback* dialog_callback, void* parameter, unsigned int id)
+{
+    ASSERT(global_dialog_callback_count < ARRAY_COUNT(global_dialog_callbacks));
+    
+    CASchedulerDialogCallbackStruct* dialog_callback_struct = global_dialog_callbacks + id;
+
+    ++global_dialog_callback_count;
+    dialog_callback_struct->callback = dialog_callback;
+    dialog_callback_struct->parameter = parameter;
 }

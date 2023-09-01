@@ -6,8 +6,8 @@ pushd build
 call vcvarsall.bat x64
 
 set debug_compiler_flags=/Od /MTd /Zi /RTC1 /D_DEBUG /fsanitize=address
-set release_compiler_flags=/O2
-set common_compiler_flags=/Oi /TC /FC /GS- /nologo /Wall /WX /wd5045 /wd4710 /wd4711 /wd4820 
+set release_compiler_flags=/O2 /Zi
+set common_compiler_flags=/Oi /TC /FC /GS- /nologo /Wall /WX /wd5045 /wd4710 /wd4711 /wd4820 /wd4702
 rem /wd4774 /wd4062 /wd4201
 
 set debug_linker_flags=/debug

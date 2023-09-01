@@ -18,11 +18,15 @@
 #define MILLISECONDS (1000)
 #define TIMER_PERIOD (MILLISECONDS * 5)
 
-#define WM_CASCHEDULER_COMMAND (WM_USER + 0)
+#define WM_CASCHEDULER_COMMAND          (WM_USER + 0)
+#define WM_CASCHEDULER_ALREADY_RUNNING  (WM_USER + 1)
+#define WM_CASCHEDULER_QUIT    (1)
 
-static HANDLE timer_handle;
+static HANDLE global_timer_handle;
 static WCHAR global_ini_path[sizeof(CASCHEDULER_INI)];
 static HICON global_icon;
+static HWND global_window_handle;
+static CASchedulerDialogConfig global_dialog_config;
 
 #ifdef _DEBUG
 #include <stdio.h>
@@ -330,17 +334,23 @@ static void cpu_affinity_routine(void)
     }
 }
 
-static void set_timer(void)
+static HANDLE create_timer(void)
 {
-    FILETIME file_time = { 0 };
-    LARGE_INTEGER due_time = { 0 };
-    BOOL is_timer_set = 0;
-
-    GetSystemTimeAsFileTime(&file_time);
-
-    timer_handle = CreateWaitableTimerW(0, 0, 0);
+    HANDLE timer_handle = CreateWaitableTimerW(0, 0, 0);
     ASSERT(timer_handle);
 
+    return timer_handle;
+}
+
+static CASCHEDULER_DIALOG_CALLBACK(set_timer)
+{
+    HANDLE timer_handle = (HANDLE)parameter;
+    LARGE_INTEGER due_time = { 0 };
+    BOOL is_timer_set = 0;
+    FILETIME file_time = { 0 };
+
+    GetSystemTimeAsFileTime(&file_time);
+    
     due_time.LowPart = file_time.dwLowDateTime;
     due_time.HighPart = file_time.dwHighDateTime;
 
@@ -348,28 +358,135 @@ static void set_timer(void)
     ASSERT(is_timer_set);
 }
 
+static CASCHEDULER_DIALOG_CALLBACK(stop_timer)
+{
+    HANDLE timer_handle = (HANDLE)parameter;
+    CancelWaitableTimer(timer_handle);
+}
+
+static void show_notification(LPCWSTR message, LPCWSTR title, DWORD flags)
+{
+	NOTIFYICONDATAW data =
+	{
+		.cbSize = sizeof(data),
+		.hWnd = global_window_handle,
+		.uFlags = NIF_INFO | NIF_TIP,
+		.dwInfoFlags = flags, // NIIF_INFO, NIIF_WARNING, NIIF_ERROR
+	};
+	StrCpyNW(data.szTip, CASCHEDULER_NAME, ARRAY_COUNT(data.szTip));
+	StrCpyNW(data.szInfo, message, ARRAY_COUNT(data.szInfo));
+	StrCpyNW(data.szInfoTitle, title ? title : CASCHEDULER_NAME, ARRAY_COUNT(data.szInfoTitle));
+	Shell_NotifyIconW(NIM_MODIFY, &data);
+}
+
+static void add_tray_icon(HWND window_handle)
+{
+    NOTIFYICONDATAW data =
+    {
+        .cbSize = sizeof(data),
+        .hWnd = window_handle,
+        .uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP,
+        .uCallbackMessage = WM_CASCHEDULER_COMMAND,
+        .hIcon = global_icon,
+    };
+    StrCpyNW(data.szInfoTitle, CASCHEDULER_NAME, ARRAY_COUNT(data.szInfoTitle));
+    Shell_NotifyIconW(NIM_ADD, &data);
+}
+
+static void remove_tray_icon(HWND window_handle)
+{
+	NOTIFYICONDATAW data =
+	{
+		.cbSize = sizeof(data),
+		.hWnd = window_handle,
+	};
+	Shell_NotifyIconW(NIM_DELETE, &data);
+}
+
 static LRESULT CALLBACK window_proc(HWND window_handle, UINT message, WPARAM wparam, LPARAM lparam)
 {
     if (message == WM_CREATE)
     {
-        NOTIFYICONDATAW data =
-        {
-            .cbSize = sizeof(data),
-            .hWnd = window_handle,
-            .uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP,
-            .uCallbackMessage = WM_CASCHEDULER_COMMAND,
-            .hIcon = global_icon,
-        };
-        StrCpyNW(data.szInfoTitle, CASCHEDULER_NAME, ARRAY_COUNT(data.szInfoTitle));
-        Shell_NotifyIconW(NIM_ADD, &data);
+        add_tray_icon(window_handle);
+        return 0;
+    }
+    else if (message == WM_DESTROY)
+	{
+		// if (gRecording)
+		// {
+		// 	StopRecording();
+		// }
+		remove_tray_icon(window_handle);
+		PostQuitMessage(0);
+
+		return 0;
+	}
+    else if (message == WM_CASCHEDULER_ALREADY_RUNNING)
+	{
+		show_notification(L"CPU Affinity Scheduler is already running!", 0, NIIF_INFO);
+
+		return 0;
+	}
+    else if (message == WM_CASCHEDULER_COMMAND)
+	{
+		if (LOWORD(lparam) == WM_LBUTTONUP)
+		{
+            // LRESULT dialog_result = 0;
+
+            cascheduler_dialog_show(&global_dialog_config);
+
+			// if (ID_START == dialog_result)
+            // {
+            //     set_timer(global_timer_handle);
+            // }
+            // else if (ID_STOP  == dialog_result)
+            // {
+            //     stop_timer(global_timer_handle);
+            // }
+		}
+        else if (LOWORD(lparam) == WM_RBUTTONUP)
+		{
+			HMENU menu = CreatePopupMenu();
+			ASSERT(menu);
+
+			AppendMenuW(menu, MF_STRING, WM_CASCHEDULER_QUIT, L"Quit");
+
+			POINT mouse;
+			GetCursorPos(&mouse);
+
+			SetForegroundWindow(window_handle);
+			int command = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_NONOTIFY, mouse.x, mouse.y, 0, window_handle, NULL);
+
+			if (command == WM_CASCHEDULER_QUIT)
+			{
+				DestroyWindow(window_handle);
+			}
+
+            DestroyMenu(menu);
+		}
 
         return 0;
     }
+    
     return DefWindowProcW(window_handle, message, wparam, lparam);
 }
 
-static HWND window;
-static CASchedulerDialogConfig global_dialog_config;
+DWORD WINAPI timer_thread_proc(LPVOID parameter)
+{
+    HANDLE timer_handle = (HANDLE)parameter;
+
+    for (;;)
+    {
+        DWORD wait = WaitForSingleObject(timer_handle, INFINITE);
+
+        if (wait == WAIT_OBJECT_0)
+        {
+            cpu_affinity_routine();
+        }   
+    }
+
+    return 0;
+}
 
 #ifdef _DEBUG
 int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, int n_show_cmd)
@@ -383,14 +500,6 @@ void WinMainCRTStartup(void)
     debug_file_handle = CreateFile(DEBUG_FILE_NAME, GENERIC_WRITE, FILE_SHARE_READ, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
 #endif
 
-	// PROCESSENTRY32 entry;
-
-    // if (find_process_by_name(CASCHEDULER_PROCESS_NAME, &entry) && GetCurrentProcessId() != entry.th32ProcessID)
-    // {
-    //     write_file("%s is already running!", CASCHEDULER_PROCESS_NAME);
-    //     ExitProcess(0);   
-    // }
-
     WNDCLASSEXW window_class =
 	{
 		.cbSize = sizeof(window_class),
@@ -402,7 +511,7 @@ void WinMainCRTStartup(void)
     HWND existing = FindWindowW(window_class.lpszClassName, NULL);
 	if (existing)
 	{
-		// PostMessageW(Existing, WM_TWITCH_NOTIFY_ALREADY_RUNNING, 0, 0);
+		PostMessageW(existing, WM_CASCHEDULER_ALREADY_RUNNING, 0, 0);
 		ExitProcess(0);
 	}
     
@@ -419,26 +528,30 @@ void WinMainCRTStartup(void)
 
 	RegisterWindowMessageW(L"TaskbarCreated");
 
-    window = CreateWindowExW(0, window_class.lpszClassName, window_class.lpszClassName, WS_POPUP,
-                             CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
-                             NULL, NULL, window_class.hInstance, NULL);
+    global_window_handle = CreateWindowExW(0, window_class.lpszClassName, window_class.lpszClassName, WS_POPUP,
+                                           CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+                                           NULL, NULL, window_class.hInstance, NULL);
+
+    global_timer_handle = create_timer();
+
+    CreateThread(0, 0, (LPTHREAD_START_ROUTINE)&timer_thread_proc, (LPVOID)global_timer_handle, 0, 0);
     
     enable_debug_privilege();
     read_settings();
-    set_timer();
-    cascheduler_dialog_config_load(&global_dialog_config);
-    cascheduler_dialog_show(&global_dialog_config);
+    cascheduler_dialog_config_load(&global_dialog_config, global_ini_path);
+    cascheduler_dialog_register_callback(set_timer, global_timer_handle, ID_START);
+    cascheduler_dialog_register_callback(stop_timer, global_timer_handle, ID_STOP);
 
     for (;;)
 	{
-        DWORD wait = MsgWaitForMultipleObjects(1, &timer_handle, FALSE, INFINITE, QS_ALLINPUT);
-        write_file("wait: %d\n", (int)wait);
+        // DWORD wait = MsgWaitForMultipleObjects(1, &global_timer_handle, FALSE, INFINITE, QS_ALLINPUT);
+        // write_file("wait: %d\n", (int)wait);
 
-		if (wait == WAIT_OBJECT_0)
-		{
-            cpu_affinity_routine();
- 		}
-		else if (wait == WAIT_OBJECT_0 + 1)
+		// if (wait == WAIT_OBJECT_0)
+		// {
+        //     cpu_affinity_routine();
+ 		// }
+		// else if (wait == WAIT_OBJECT_0 + 1)
 		{
             MSG message;
             BOOL result = GetMessageW(&message, NULL, 0, 0);
@@ -452,9 +565,9 @@ void WinMainCRTStartup(void)
             TranslateMessage(&message);
             DispatchMessageW(&message);
 		}
-        else
-        {
-            ASSERT(0);
-        }
+        // else
+        // {
+        //     ASSERT(0);
+        // }
 	}
 }
