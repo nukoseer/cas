@@ -26,7 +26,7 @@ if %debug%==yes (
 )
 
 rc.exe /nologo ..\cascheduler.rc 
-%compiler% %common_compiler_flags% ..\set_cpu_affinity.c ..\cascheduler_dialog.c /link ..\cascheduler.res %common_linker_flags% /out:set_cpu_affinity.exe 
+%compiler% %common_compiler_flags% ..\cascheduler.c ..\cascheduler_dialog.c /link ..\cascheduler.res %common_linker_flags% /out:CPUAffinityScheduler.exe 
 
 popd
 

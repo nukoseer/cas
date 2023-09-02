@@ -10,7 +10,7 @@
 typedef struct
 {
     WCHAR processes[MAX_ITEMS][64];
-	WCHAR affinity_masks[MAX_ITEMS][64];
+	UINT affinity_masks[MAX_ITEMS];
     WCHAR bit_mask[32];
     WCHAR hex_value[32];
 } CASchedulerDialogConfig;
