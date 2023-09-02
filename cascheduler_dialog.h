@@ -11,8 +11,8 @@ typedef struct
 {
     WCHAR processes[MAX_ITEMS][64];
 	UINT affinity_masks[MAX_ITEMS];
-    WCHAR bit_mask[32];
-    WCHAR hex_value[32];
+    BOOL sets[MAX_ITEMS];
+    DWORD value_type;
 } CASchedulerDialogConfig;
 
 typedef void CASchedulerDialogCallback(void* parameter);

@@ -10,6 +10,7 @@
 #include <tlhelp32.h>
 #include <shellapi.h>
 #include <shlwapi.h>
+#include <windowsx.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,7 +23,12 @@
 #pragma comment (lib, "Shlwapi")
 #pragma comment (lib, "Shell32")
 
+#ifdef _DEBUG
 #define ASSERT(x) do { if (!(x)) { *(volatile int*)0; } } while (0)
+#else
+#define ASSERT(x) (void)(x);
+#endif
+
 #define ARRAY_COUNT(x)      (sizeof(x) / sizeof(*(x)))
 
 #define H_CASCHEDULER_H

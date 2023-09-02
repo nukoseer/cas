@@ -2,13 +2,16 @@
 #include "cascheduler_dialog.h"
 
 #define CASCHEDULER_NAME          (L"CPU Affinity Scheduler")
+#define CASCHEDULER_URL           (L"https://github.com/nukoseer/CPUAffinityScheduler")
+
 #define CASCHEDULER_INI           (L"CPUAffinityScheduler.ini")
 #define SECONDS_TO_MILLISECONDS   (1000)
 #define TIMER_PERIOD              (SECONDS_TO_MILLISECONDS * 5)
 
 #define WM_CASCHEDULER_COMMAND          (WM_USER + 0)
 #define WM_CASCHEDULER_ALREADY_RUNNING  (WM_USER + 1)
-#define CMD_QUIT                        (1)
+#define CMD_CASCHEDULER                 (1)
+#define CMD_QUIT                        (2)
 
 typedef struct
 {
@@ -20,60 +23,6 @@ typedef struct
 } CAScheduler;
 
 static CAScheduler global_cascheduler;
-static HANDLE debug_file_handle;
-
-#ifdef _DEBUG
-#include <stdarg.h>
-
-#define DEBUG_FILE_NAME ("debug.txt")
-
-static void write_file(const char* fmt, ...)
-{
-    DWORD bytes_written = 0;
-    va_list args;
-    char temp[512] = { 0 };
-    int length = 0;
-
-    va_start(args, fmt);
-    length = vsnprintf(temp, 511, fmt, args);
-    va_end(args);
-
-    if (length > 0)
-    {
-        WriteFile(debug_file_handle, temp, length, &bytes_written, 0);
-    }
-}
-
-static void print_bits(const char* label, unsigned int bits)
-{
-    unsigned int i = 0;
-    unsigned int size = sizeof(bits) * 8;
-    unsigned int mask = 0x80000000;
-
-    if (label)
-        write_file("%s ", label);
-
-    for (i = 0; i < size; ++i)
-    {
-        write_file("%d", !!(bits & mask));
-        mask >>= 1;
-    }
-
-    write_file("\n");
-}
-
-static void print_affinity_mask(const char* label, unsigned int affinity_mask)
-{
-    write_file("  %s:\n", label);
-    write_file("    Hex   : 0x%X\n", (unsigned int)affinity_mask);
-    print_bits("    Binary:", affinity_mask);
-}
-
-#else
-#define write_file(...)
-#define print_bits(...)
-#define print_affinity_mask(...)
-#endif
 
 static void cascheduler__enable_debug_privilege(void)
 {
@@ -94,19 +43,16 @@ static void cascheduler__enable_debug_privilege(void)
     CloseHandle(token_handle);
 }
 
-static void cascheduler__set_cpu_affinity(PROCESSENTRY32W* entry, UINT desired_affinity_mask)
+static BOOL cascheduler__set_cpu_affinity(PROCESSENTRY32W* entry, unsigned int desired_affinity_mask)
 {
+    BOOL set = 0;
     HANDLE handle_process = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_SET_INFORMATION, FALSE, entry->th32ProcessID);
     DWORD process_affinity_mask = 0;
     DWORD system_affinity_mask = 0;
 
     if (handle_process)
     {
-        write_file("Setting affinity mask 0x%X for %s:\n", desired_affinity_mask, entry->szExeFile);
-
         GetProcessAffinityMask(handle_process, (PDWORD_PTR)&process_affinity_mask, (PDWORD_PTR)&system_affinity_mask);
-
-        print_affinity_mask("Initial affinity mask", process_affinity_mask);
 
         if (process_affinity_mask != desired_affinity_mask)
         {
@@ -115,23 +61,18 @@ static void cascheduler__set_cpu_affinity(PROCESSENTRY32W* entry, UINT desired_a
 
             if (process_affinity_mask == desired_affinity_mask)
             {
-                print_affinity_mask("New affinity mask", desired_affinity_mask);
-                write_file("SUCCESSFUL!\n");
-            }
-            else
-            {
-                write_file("  Could not set!\n");
+                set = 1;
             }
         }
+        else
+        {
+            set = 1;
+        }
 
-        write_file("\n");
         CloseHandle(handle_process);
     }
-    else
-    {
-        write_file("'%s' could not open. Please try to run CPUAffinityScheduler with administrator rights.\n", entry->szExeFile);
-        write_file("FAILED!\n");
-    }
+
+    return set;
 }
 
 static void cascheduler__cpu_affinity_routine(CASchedulerDialogConfig* dialog_config)
@@ -141,7 +82,7 @@ static void cascheduler__cpu_affinity_routine(CASchedulerDialogConfig* dialog_co
     for (i = 0; i < MAX_ITEMS; ++i)
     {
         WCHAR* process = dialog_config->processes[i];
-        UINT affinity_mask = dialog_config->affinity_masks[i];
+        BOOL found = 0;
 
         if (*process)
         {
@@ -154,12 +95,18 @@ static void cascheduler__cpu_affinity_routine(CASchedulerDialogConfig* dialog_co
                 {
                     if (!lstrcmpW((LPCWSTR)entry.szExeFile, process))
                     {
-                        cascheduler__set_cpu_affinity(&entry, affinity_mask);
+                        UINT affinity_mask = dialog_config->affinity_masks[i];
+                        dialog_config->sets[i] = cascheduler__set_cpu_affinity(&entry, affinity_mask);
+                        found = 1;
                     }
                 } while (Process32NextW(snapshot, &entry));
 
+                if (!found)
+                {
+                    dialog_config->sets[i] = 0;
+                }
             }
-            CloseHandle(snapshot);           
+            CloseHandle(snapshot);
         }
         else
         {
@@ -272,7 +219,9 @@ static LRESULT CALLBACK cascheduler__window_proc(HWND window_handle, UINT messag
 			HMENU menu = CreatePopupMenu();
 			ASSERT(menu);
 
-			AppendMenuW(menu, MF_STRING, CMD_QUIT, L"Quit");
+            AppendMenuW(menu, MF_STRING, CMD_CASCHEDULER, CASCHEDULER_NAME);
+			AppendMenuW(menu, MF_SEPARATOR, 0, NULL);
+			AppendMenuW(menu, MF_STRING, CMD_QUIT, L"Exit");
 
 			POINT mouse;
 			GetCursorPos(&mouse);
@@ -280,7 +229,11 @@ static LRESULT CALLBACK cascheduler__window_proc(HWND window_handle, UINT messag
 			SetForegroundWindow(window_handle);
 			int command = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_NONOTIFY, mouse.x, mouse.y, 0, window_handle, NULL);
 
-			if (command == CMD_QUIT)
+            if (command == CMD_CASCHEDULER)
+			{
+				ShellExecuteW(NULL, L"open", CASCHEDULER_URL, NULL, NULL, SW_SHOWNORMAL);
+			}
+			else if (command == CMD_QUIT)
 			{
 				DestroyWindow(window_handle);
 			}
@@ -364,6 +317,7 @@ void WinMainCRTStartup(void)
     cascheduler_dialog_config_load(&global_cascheduler.dialog_config, global_cascheduler.ini_path);
     cascheduler_dialog_register_callback(cascheduler__set_timer, global_cascheduler.timer_handle, ID_START);
     cascheduler_dialog_register_callback(cascheduler__stop_timer, global_cascheduler.timer_handle, ID_STOP);
+    cascheduler_dialog_show(&global_cascheduler.dialog_config);
 
     for (;;)
 	{
