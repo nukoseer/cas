@@ -354,24 +354,27 @@ static LRESULT CALLBACK cascheduler_dialog__proc(HWND window, UINT message, WPAR
     }
     else if (message == WM_TIMER)
 	{
-        CASchedulerDialogConfig* dialog_config = (CASchedulerDialogConfig*)GetWindowLongPtrW(window, GWLP_USERDATA);
-
-        for (unsigned int i = 0; i < MAX_ITEMS; ++i)
+        if (global_started)
         {
-            if (*dialog_config->processes[i])
+            CASchedulerDialogConfig* dialog_config = (CASchedulerDialogConfig*)GetWindowLongPtrW(window, GWLP_USERDATA);
+
+            for (unsigned int i = 0; i < MAX_ITEMS; ++i)
             {
-                if (dialog_config->sets[i])
+                if (*dialog_config->processes[i])
                 {
-                    SetDlgItemTextW(window, ID_SET + i, (WCHAR*)global_check_mark);
+                    if (dialog_config->sets[i])
+                    {
+                        SetDlgItemTextW(window, ID_SET + i, (WCHAR*)global_check_mark);
+                    }
+                    else
+                    {
+                        SetDlgItemTextW(window, ID_SET + i, L"");
+                    }
                 }
                 else
                 {
-                    SetDlgItemTextW(window, ID_SET + i, L"");
+                    break;
                 }
-            }
-            else
-            {
-                break;
             }
         }
     }
@@ -661,9 +664,9 @@ LRESULT cascheduler_dialog_show(CASchedulerDialogConfig* dialog_config)
 				.rect = { 0, ROW_HEIGHT, (COL_WIDTH + PADDING) * 2 + COL2_WIDTH, ROW2_HEIGHT },
                 .items =
                 {
-                    { "Value Type",  ID_VALUE_TYPE,  ITEM_COMBOBOX | ITEM_LABEL, 32 },
-                    { "Value",       ID_VALUE,       ITEM_STRING | ITEM_LABEL, 32 },
-                    { "Result",      ID_RESULT,      ITEM_CONST_STRING | ITEM_LABEL, 32 },
+                    { "Value Type",  ID_VALUE_TYPE,  ITEM_COMBOBOX | ITEM_LABEL, 48 },
+                    { "Value",       ID_VALUE,       ITEM_STRING | ITEM_LABEL, 48 },
+                    { "Result",      ID_RESULT,      ITEM_CONST_STRING | ITEM_LABEL, 48 },
                     { NULL },
                 },
 			},

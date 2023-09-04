@@ -273,10 +273,6 @@ int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, int n_s
 void WinMainCRTStartup(void)
 {
 #endif
-#ifdef _DEBUG
-    debug_file_handle = CreateFile(DEBUG_FILE_NAME, GENERIC_WRITE, FILE_SHARE_READ, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
-#endif
-
     WNDCLASSEXW window_class =
 	{
 		.cbSize = sizeof(window_class),
