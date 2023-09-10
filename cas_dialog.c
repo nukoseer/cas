@@ -1,7 +1,7 @@
 // NOTE: Source: https://github.com/mmozeiko/wcap/blob/main/wcap_config.c
 
-#include "cascheduler.h"
-#include "cascheduler_dialog.h"
+#include "cas.h"
+#include "cas_dialog.h"
 
 #define COL_WIDTH    (150)
 #define COL2_WIDTH   (24)
@@ -30,7 +30,7 @@
 #define CONTROL_STATIC    (0x0082)
 #define CONTROL_COMBOBOX  (0x0085)
 
-#define CASCHEDULER_DIALOG_INI_SECTION (L"settings")
+#define CAS_DIALOG_INI_SECTION (L"settings")
 
 typedef struct
 {
@@ -38,7 +38,7 @@ typedef struct
 	int top;
 	int width;
 	int height;
-} CASchedulerDialogRect;
+} CasDialogRect;
 
 typedef struct
 {
@@ -46,39 +46,39 @@ typedef struct
 	WORD id;
 	WORD item;
 	DWORD width;
-} CASchedulerDialogItem;
+} CasDialogItem;
 
 typedef struct
 {
 	const char* caption;
-	CASchedulerDialogRect rect;
-	CASchedulerDialogItem items[MAX_ITEMS];
-} CASchedulerDialogGroup;
+	CasDialogRect rect;
+	CasDialogItem items[MAX_ITEMS];
+} CasDialogGroup;
 
 typedef struct
 {
-	CASchedulerDialogGroup* groups;
+	CasDialogGroup* groups;
     const char* title;
 	const char* font;
     WORD font_size;
-} CASchedulerDialogLayout;
+} CasDialogLayout;
 
 typedef struct
 {
-    CASchedulerDialogCallback* callback;
+    CasDialogCallback* callback;
     void* parameter;
-} CASchedulerDialogCallbackStruct;
+} CasDialogCallbackStruct;
 
 static HWND global_dialog_window;
 static WCHAR* global_ini_path;
 static int global_started;
 static int global_value_type;
-static CASchedulerDialogCallbackStruct global_dialog_callbacks[3];
+static CasDialogCallbackStruct global_dialog_callbacks[3];
 static unsigned int global_dialog_callback_count;
 static UINT_PTR global_dialog_timer_handle;
 static const char global_check_mark[] = "\x20\x00\x20\x00\x20\x00\x13\x27\x00\x00"; // NOTE: Three space and check mark for easy printing.
 
-static int cascheduler_dialog__validate_bits(const WCHAR* bits, int length, const WCHAR** wrong_bit)
+static int cas_dialog__validate_bits(const WCHAR* bits, int length, const WCHAR** wrong_bit)
 {
     int result = 1;
 
@@ -95,7 +95,7 @@ static int cascheduler_dialog__validate_bits(const WCHAR* bits, int length, cons
     return result;
 }
 
-static unsigned int cascheduler_dialog__bits_to_integer(const WCHAR* bits, int length)
+static unsigned int cas_dialog__bits_to_integer(const WCHAR* bits, int length)
 {
     unsigned int result = 0;
     int i;
@@ -112,7 +112,7 @@ static unsigned int cascheduler_dialog__bits_to_integer(const WCHAR* bits, int l
     return result;
 }
 
-static int cascheduler_dialog__is_hex(WCHAR digit)
+static int cas_dialog__is_hex(WCHAR digit)
 {
     int result = ((digit >= L'0' && digit <= L'9') ||
                   (digit >= L'a' && digit <= L'f')  ||
@@ -121,13 +121,13 @@ static int cascheduler_dialog__is_hex(WCHAR digit)
     return result;
 }
 
-static int cascheduler_dialog__validate_hex(const WCHAR* hex, int length, const WCHAR** wrong_hex)
+static int cas_dialog__validate_hex(const WCHAR* hex, int length, const WCHAR** wrong_hex)
 {
     int result = 1;
 
     for (int i = 0; i < length; ++i)
     {
-        if (!cascheduler_dialog__is_hex(hex[i]))
+        if (!cas_dialog__is_hex(hex[i]))
         {
             result = 0;
             *wrong_hex = hex + i;
@@ -138,7 +138,7 @@ static int cascheduler_dialog__validate_hex(const WCHAR* hex, int length, const 
     return result;
 }
 
-static void cascheduler_dialog__integer_to_bits(WCHAR* bits, unsigned long long integer, int length)
+static void cas_dialog__integer_to_bits(WCHAR* bits, unsigned long long integer, int length)
 {
     int i;
 
@@ -148,7 +148,7 @@ static void cascheduler_dialog__integer_to_bits(WCHAR* bits, unsigned long long 
     }
 }
 
-static void cascheduler_dialog__set_values(HWND window, CASchedulerDialogConfig* dialog_config)
+static void cas_dialog__set_values(HWND window, CasDialogConfig* dialog_config)
 {
     for (unsigned int i = 0; i < MAX_ITEMS; ++i)
     {
@@ -172,7 +172,7 @@ static void cascheduler_dialog__set_values(HWND window, CASchedulerDialogConfig*
     ComboBox_SetCurSel(control, 0);
 }
 
-static void cascheduler_dialog__convert_value(HWND window)
+static void cas_dialog__convert_value(HWND window)
 {
     WCHAR value_string[64] = { 0 };
     WCHAR result_string[64] = { 0 };
@@ -193,9 +193,9 @@ static void cascheduler_dialog__convert_value(HWND window)
                 SetDlgItemTextW(window, ID_VALUE, value_string);
                 SendDlgItemMessageW(window, ID_VALUE, EM_SETSEL, 32, 32);
             }
-            else if (cascheduler_dialog__validate_bits(value_string, value_length, &wrong_bit))
+            else if (cas_dialog__validate_bits(value_string, value_length, &wrong_bit))
             {
-                unsigned int result = cascheduler_dialog__bits_to_integer(value_string, value_length);
+                unsigned int result = cas_dialog__bits_to_integer(value_string, value_length);
 
                 _snwprintf(result_string, ARRAY_COUNT(result_string), L"%X", result);
                 SetDlgItemTextW(window, ID_RESULT, result_string);
@@ -222,11 +222,11 @@ static void cascheduler_dialog__convert_value(HWND window)
                 SetDlgItemTextW(window, ID_VALUE, value_string);
                 SendDlgItemMessageW(window, ID_VALUE, EM_SETSEL, 16, 16);
             }
-            else if (cascheduler_dialog__validate_hex(value_string, value_length, &wrong_hex))
+            else if (cas_dialog__validate_hex(value_string, value_length, &wrong_hex))
             {
                 long long integer = wcstoll(value_string, 0, 16);
 
-                cascheduler_dialog__integer_to_bits(result_string, integer, 32);
+                cas_dialog__integer_to_bits(result_string, integer, 32);
                 SetDlgItemTextW(window, ID_RESULT, result_string);
             }
             else
@@ -247,9 +247,9 @@ static void cascheduler_dialog__convert_value(HWND window)
     }
 }
 
-static void cascheduler_dialog__config_save(HWND window)
+static void cas_dialog__config_save(HWND window)
 {
-    WritePrivateProfileStringW(CASCHEDULER_DIALOG_INI_SECTION, 0, L"", global_ini_path);
+    WritePrivateProfileStringW(CAS_DIALOG_INI_SECTION, 0, L"", global_ini_path);
 
     // NOTE: We do reverse iteration because WritePrivateProfileSectionW insert names to beginning not to end.
     for (int i = MAX_ITEMS - 1; i >= 0; --i)
@@ -270,23 +270,23 @@ static void cascheduler_dialog__config_save(HWND window)
             length = _snwprintf(pair_string, ARRAY_COUNT(pair_string), L"%s", process_string);
             pair_string[length++] = L':';
             _snwprintf(pair_string + length, ARRAY_COUNT(pair_string) - length, L"%s", affinity_mask_string);
-            WritePrivateProfileSectionW(CASCHEDULER_DIALOG_INI_SECTION, pair_string, global_ini_path);
+            WritePrivateProfileSectionW(CAS_DIALOG_INI_SECTION, pair_string, global_ini_path);
         }
     }
 }
 
-static LRESULT CALLBACK cascheduler_dialog__proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
+static LRESULT CALLBACK cas_dialog__proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
 {
     if (message == WM_INITDIALOG)
 	{
-        CASchedulerDialogConfig* dialog_config = (CASchedulerDialogConfig*)lparam;
+        CasDialogConfig* dialog_config = (CasDialogConfig*)lparam;
 
         SetWindowLongPtrW(window, GWLP_USERDATA, (LONG_PTR)dialog_config);
 
         SendDlgItemMessageW(window, ID_VALUE_TYPE, CB_ADDSTRING, 0, (LPARAM)L"Bit");
 		SendDlgItemMessageW(window, ID_VALUE_TYPE, CB_ADDSTRING, 0, (LPARAM)L"Hex");
 
-        cascheduler_dialog__set_values(window, dialog_config);
+        cas_dialog__set_values(window, dialog_config);
 
         if (global_started)
         {
@@ -314,10 +314,10 @@ static LRESULT CALLBACK cascheduler_dialog__proc(HWND window, UINT message, WPAR
         {
             if (!global_started)
             {
-                CASchedulerDialogConfig* dialog_config = (CASchedulerDialogConfig*)GetWindowLongPtrW(window, GWLP_USERDATA);
+                CasDialogConfig* dialog_config = (CasDialogConfig*)GetWindowLongPtrW(window, GWLP_USERDATA);
 
-                cascheduler_dialog__config_save(window);
-                cascheduler_dialog_config_load(dialog_config);
+                cas_dialog__config_save(window);
+                cas_dialog_config_load(dialog_config);
 
                 global_started = 1;
 
@@ -332,7 +332,7 @@ static LRESULT CALLBACK cascheduler_dialog__proc(HWND window, UINT message, WPAR
                     EnableWindow(GetDlgItem(window, ID_AFFINITY_MASK + i), 0);
                 }
 
-                CASchedulerDialogCallbackStruct* dialog_callback_struct = global_dialog_callbacks + ID_START;
+                CasDialogCallbackStruct* dialog_callback_struct = global_dialog_callbacks + ID_START;
 
                 if (dialog_callback_struct->callback)
                 {
@@ -363,7 +363,7 @@ static LRESULT CALLBACK cascheduler_dialog__proc(HWND window, UINT message, WPAR
                     SetDlgItemTextW(window, ID_SET + i, L"");
                 }
 
-                CASchedulerDialogCallbackStruct* dialog_callback_struct = global_dialog_callbacks + ID_STOP;
+                CasDialogCallbackStruct* dialog_callback_struct = global_dialog_callbacks + ID_STOP;
 
                 if (dialog_callback_struct->callback)
                 {
@@ -388,7 +388,7 @@ static LRESULT CALLBACK cascheduler_dialog__proc(HWND window, UINT message, WPAR
 		}
         else if (control == ID_VALUE)
         {
-            cascheduler_dialog__convert_value(window);
+            cas_dialog__convert_value(window);
         }
         else if (control >= ID_AFFINITY_MASK && control < ID_AFFINITY_MASK + MAX_ITEMS)
         {
@@ -404,7 +404,7 @@ static LRESULT CALLBACK cascheduler_dialog__proc(HWND window, UINT message, WPAR
                 SetDlgItemTextW(window, control, affinity_mask_string);
                 SendDlgItemMessageW(window, control, EM_SETSEL, 16, 16);
             }
-            else if (!cascheduler_dialog__validate_hex(affinity_mask_string, affinity_mask_string_length, &wrong_hex))
+            else if (!cas_dialog__validate_hex(affinity_mask_string, affinity_mask_string_length, &wrong_hex))
             {
                 if (wrong_hex)
                 {
@@ -423,7 +423,7 @@ static LRESULT CALLBACK cascheduler_dialog__proc(HWND window, UINT message, WPAR
 	{
         if (global_started)
         {
-            CASchedulerDialogConfig* dialog_config = (CASchedulerDialogConfig*)GetWindowLongPtrW(window, GWLP_USERDATA);
+            CasDialogConfig* dialog_config = (CasDialogConfig*)GetWindowLongPtrW(window, GWLP_USERDATA);
 
             for (unsigned int i = 0; i < MAX_ITEMS; ++i)
             {
@@ -449,15 +449,15 @@ static LRESULT CALLBACK cascheduler_dialog__proc(HWND window, UINT message, WPAR
     return FALSE;
 }
 
-static void* cascheduler_dialog__align(BYTE* data, SIZE_T size)
+static void* cas_dialog__align(BYTE* data, SIZE_T size)
 {
 	SIZE_T pointer = (SIZE_T)data;
 	return data + ((pointer + size - 1) & ~(size - 1)) - pointer;
 }
 
-static BYTE* cascheduler__do_dialog_item(BYTE* buffer, LPCSTR text, WORD id, WORD control, DWORD style, int x, int y, int w, int h)
+static BYTE* cas__do_dialog_item(BYTE* buffer, LPCSTR text, WORD id, WORD control, DWORD style, int x, int y, int w, int h)
 {
-	buffer = cascheduler_dialog__align(buffer, sizeof(DWORD));
+	buffer = cas_dialog__align(buffer, sizeof(DWORD));
 
 	*(DLGITEMTEMPLATE*)buffer = (DLGITEMTEMPLATE)
 	{
@@ -471,26 +471,26 @@ static BYTE* cascheduler__do_dialog_item(BYTE* buffer, LPCSTR text, WORD id, WOR
 	buffer += sizeof(DLGITEMTEMPLATE);
 
 	// window class
-	buffer = cascheduler_dialog__align(buffer, sizeof(WORD));
+	buffer = cas_dialog__align(buffer, sizeof(WORD));
 	*(WORD*)buffer = 0xffff;
 	buffer += sizeof(WORD);
 	*(WORD*)buffer = control;
 	buffer += sizeof(WORD);
 
 	// item text
-	buffer = cascheduler_dialog__align(buffer, sizeof(WCHAR));
+	buffer = cas_dialog__align(buffer, sizeof(WCHAR));
 	DWORD item_chars = MultiByteToWideChar(CP_UTF8, 0, text, -1, (WCHAR*)buffer, 128);
 	buffer += item_chars * sizeof(WCHAR);
 
 	// create extras
-	buffer = cascheduler_dialog__align(buffer, sizeof(WORD));
+	buffer = cas_dialog__align(buffer, sizeof(WORD));
 	*(WORD*)buffer = 0;
 	buffer += sizeof(WORD);
 
 	return buffer;
 }
 
-static void cascheduler__do_dialog_layout(const CASchedulerDialogLayout* dialog_layout, BYTE* buffer, SIZE_T buffer_size)
+static void cas__do_dialog_layout(const CasDialogLayout* dialog_layout, BYTE* buffer, SIZE_T buffer_size)
 {
 	BYTE* end = buffer + buffer_size;
 
@@ -499,27 +499,27 @@ static void cascheduler__do_dialog_layout(const CASchedulerDialogLayout* dialog_
 	buffer += sizeof(DLGTEMPLATE);
 
 	// menu
-	buffer = cascheduler_dialog__align(buffer, sizeof(WCHAR));
+	buffer = cas_dialog__align(buffer, sizeof(WCHAR));
 	*(WCHAR*)buffer = 0;
 	buffer += sizeof(WCHAR);
 
 	// window class
-	buffer = cascheduler_dialog__align(buffer, sizeof(WCHAR));
+	buffer = cas_dialog__align(buffer, sizeof(WCHAR));
 	*(WCHAR*)buffer = 0;
 	buffer += sizeof(WCHAR);
 
 	// title
-	buffer = cascheduler_dialog__align(buffer, sizeof(WCHAR));
+	buffer = cas_dialog__align(buffer, sizeof(WCHAR));
 	DWORD title_chars = MultiByteToWideChar(CP_UTF8, 0, dialog_layout->title, -1, (WCHAR*)buffer, 128);
 	buffer += title_chars * sizeof(WCHAR);
 
 	// font size
-	buffer = cascheduler_dialog__align(buffer, sizeof(WORD));
+	buffer = cas_dialog__align(buffer, sizeof(WORD));
 	*(WORD*)buffer = dialog_layout->font_size;
 	buffer += sizeof(WORD);
 
 	// font name
-	buffer = cascheduler_dialog__align(buffer, sizeof(WCHAR));
+	buffer = cas_dialog__align(buffer, sizeof(WCHAR));
 	DWORD font_chars = MultiByteToWideChar(CP_UTF8, 0, dialog_layout->font, -1, (WCHAR*)buffer, 128);
 	buffer += font_chars * sizeof(WCHAR);
 
@@ -528,29 +528,29 @@ static void cascheduler__do_dialog_layout(const CASchedulerDialogLayout* dialog_
 	int button_x = PADDING + 2 * (COL_WIDTH + PADDING) + COL2_WIDTH + PADDING - 3 * (PADDING + BUTTON_WIDTH);
 	int button_y = PADDING + ROW_HEIGHT + PADDING + ROW2_HEIGHT + PADDING;
 
-	DLGITEMTEMPLATE* start_buffer = cascheduler_dialog__align(buffer, sizeof(DWORD));
-	buffer = cascheduler__do_dialog_item(buffer, "Start", ID_START, CONTROL_BUTTON, WS_TABSTOP | BS_DEFPUSHBUTTON, button_x, button_y, BUTTON_WIDTH, ITEM_HEIGHT);
+	DLGITEMTEMPLATE* start_buffer = cas_dialog__align(buffer, sizeof(DWORD));
+	buffer = cas__do_dialog_item(buffer, "Start", ID_START, CONTROL_BUTTON, WS_TABSTOP | BS_DEFPUSHBUTTON, button_x, button_y, BUTTON_WIDTH, ITEM_HEIGHT);
 	button_x += BUTTON_WIDTH + PADDING;
     (void)start_buffer;
 
-	DLGITEMTEMPLATE* stop_buffer = cascheduler_dialog__align(buffer, sizeof(DWORD));
-	buffer = cascheduler__do_dialog_item(buffer, "Stop", ID_STOP, CONTROL_BUTTON, WS_TABSTOP | BS_PUSHBUTTON, button_x, button_y, BUTTON_WIDTH, ITEM_HEIGHT);
+	DLGITEMTEMPLATE* stop_buffer = cas_dialog__align(buffer, sizeof(DWORD));
+	buffer = cas__do_dialog_item(buffer, "Stop", ID_STOP, CONTROL_BUTTON, WS_TABSTOP | BS_PUSHBUTTON, button_x, button_y, BUTTON_WIDTH, ITEM_HEIGHT);
 	button_x += BUTTON_WIDTH + PADDING;
     (void)stop_buffer;
 
-	DLGITEMTEMPLATE* cancel_buffer = cascheduler_dialog__align(buffer, sizeof(DWORD));
-	buffer = cascheduler__do_dialog_item(buffer, "Cancel", ID_CANCEL, CONTROL_BUTTON, WS_TABSTOP | BS_PUSHBUTTON, button_x, button_y, BUTTON_WIDTH, ITEM_HEIGHT);
+	DLGITEMTEMPLATE* cancel_buffer = cas_dialog__align(buffer, sizeof(DWORD));
+	buffer = cas__do_dialog_item(buffer, "Cancel", ID_CANCEL, CONTROL_BUTTON, WS_TABSTOP | BS_PUSHBUTTON, button_x, button_y, BUTTON_WIDTH, ITEM_HEIGHT);
 	button_x += BUTTON_WIDTH + PADDING;
     (void)cancel_buffer;
 
-	for (const CASchedulerDialogGroup* group = dialog_layout->groups; group->caption; group++)
+	for (const CasDialogGroup* group = dialog_layout->groups; group->caption; group++)
 	{
 		int x = group->rect.left + PADDING;
 		int y = group->rect.top + PADDING;
 		int w = group->rect.width;
 		int h = group->rect.height;
 
-		buffer = cascheduler__do_dialog_item(buffer, group->caption, (WORD)-1, CONTROL_BUTTON, BS_GROUPBOX, x, y, w, h);
+		buffer = cas__do_dialog_item(buffer, group->caption, (WORD)-1, CONTROL_BUTTON, BS_GROUPBOX, x, y, w, h);
 		item_count++;
 
 		x += PADDING;
@@ -559,7 +559,7 @@ static void cascheduler__do_dialog_layout(const CASchedulerDialogLayout* dialog_
 
 		for (unsigned int item_index = 0; item_index < ARRAY_COUNT(group->items); item_index++)
 		{
-            const CASchedulerDialogItem* item = group->items + item_index;
+            const CasDialogItem* item = group->items + item_index;
 			int has_number = !!(item->item & ITEM_NUMBER);
             int has_string = !!(item->item & ITEM_STRING);
             int has_const_string = !!(item->item & ITEM_CONST_STRING);
@@ -573,7 +573,7 @@ static void cascheduler__do_dialog_layout(const CASchedulerDialogLayout* dialog_
 
             if (has_label)
             {
-                buffer = cascheduler__do_dialog_item(buffer, item->text, (WORD)-1, (WORD)CONTROL_STATIC, 0, item_x, y, item->width, ITEM_HEIGHT);
+                buffer = cas__do_dialog_item(buffer, item->text, (WORD)-1, (WORD)CONTROL_STATIC, 0, item_x, y, item->width, ITEM_HEIGHT);
 				item_count++;
                 item_x += item->width + PADDING;
 				item_w -= item->width + PADDING;
@@ -588,7 +588,7 @@ static void cascheduler__do_dialog_layout(const CASchedulerDialogLayout* dialog_
                     style |= ES_RIGHT;
                 }
 
-                buffer = cascheduler__do_dialog_item(buffer, "", (WORD)item_id, (WORD)CONTROL_EDIT, style, item_x, y, item_w, ITEM_HEIGHT);
+                buffer = cas__do_dialog_item(buffer, "", (WORD)item_id, (WORD)CONTROL_EDIT, style, item_x, y, item_w, ITEM_HEIGHT);
 				item_count++;
             }
 
@@ -606,19 +606,19 @@ static void cascheduler__do_dialog_layout(const CASchedulerDialogLayout* dialog_
                     style |= ES_CENTER;
                 }
 
-                buffer = cascheduler__do_dialog_item(buffer, "", (WORD)item_id, (WORD)CONTROL_STATIC, style, item_x, y, item_w, ITEM_HEIGHT);
+                buffer = cas__do_dialog_item(buffer, "", (WORD)item_id, (WORD)CONTROL_STATIC, style, item_x, y, item_w, ITEM_HEIGHT);
 				item_count++;
             }
 
 			if (has_number)
 			{
-				buffer = cascheduler__do_dialog_item(buffer, "", (WORD)item_id, (WORD)CONTROL_EDIT, WS_TABSTOP | WS_BORDER | ES_NUMBER, item_x, y, item_w, ITEM_HEIGHT);
+				buffer = cas__do_dialog_item(buffer, "", (WORD)item_id, (WORD)CONTROL_EDIT, WS_TABSTOP | WS_BORDER | ES_NUMBER, item_x, y, item_w, ITEM_HEIGHT);
 				item_count++;
 			}
 
             if (has_combobox)
 			{
-				buffer = cascheduler__do_dialog_item(buffer, "", (WORD)item_id, (WORD)CONTROL_COMBOBOX, WS_TABSTOP | CBS_DROPDOWNLIST | CBS_HASSTRINGS, item_x, y, item_w, ITEM_HEIGHT);
+				buffer = cas__do_dialog_item(buffer, "", (WORD)item_id, (WORD)CONTROL_COMBOBOX, WS_TABSTOP | CBS_DROPDOWNLIST | CBS_HASSTRINGS, item_x, y, item_w, ITEM_HEIGHT);
 				item_count++;
 			}
 
@@ -637,7 +637,7 @@ static void cascheduler__do_dialog_layout(const CASchedulerDialogLayout* dialog_
 	ASSERT(buffer <= end);
 }
 
-void cascheduler_dialog_config_load(CASchedulerDialogConfig* dialog_config)
+void cas_dialog_config_load(CasDialogConfig* dialog_config)
 {
     WIN32_FILE_ATTRIBUTE_DATA data;
 
@@ -649,7 +649,7 @@ void cascheduler_dialog_config_load(CASchedulerDialogConfig* dialog_config)
 
     WCHAR settings[(sizeof(dialog_config->processes) + sizeof(dialog_config->affinity_masks))] = { 0 };
 
-    GetPrivateProfileSectionW(CASCHEDULER_DIALOG_INI_SECTION,
+    GetPrivateProfileSectionW(CAS_DIALOG_INI_SECTION,
                               settings, ARRAY_COUNT(settings),
                               global_ini_path);
 
@@ -699,7 +699,7 @@ void cascheduler_dialog_config_load(CASchedulerDialogConfig* dialog_config)
     }
 }
 
-LRESULT cascheduler_dialog_show(CASchedulerDialogConfig* dialog_config)
+LRESULT cas_dialog_show(CasDialogConfig* dialog_config)
 {
 	if (global_dialog_window)
 	{
@@ -707,12 +707,12 @@ LRESULT cascheduler_dialog_show(CASchedulerDialogConfig* dialog_config)
 		return FALSE;
 	}
 
-	CASchedulerDialogLayout dialog_layout = (CASchedulerDialogLayout)
+	CasDialogLayout dialog_layout = (CasDialogLayout)
 	{
-		.title = "CPU Affinity Scheduler",
+		.title = "cas",
 		.font = "Segoe UI",
 		.font_size = 9,
-		.groups = (CASchedulerDialogGroup[])
+		.groups = (CasDialogGroup[])
 		{
 			{
 				.caption = "Processes",
@@ -743,33 +743,33 @@ LRESULT cascheduler_dialog_show(CASchedulerDialogConfig* dialog_config)
 
     for (unsigned int i = 0; i < MAX_ITEMS; ++i)
     {
-        CASchedulerDialogItem* process_item = dialog_layout.groups[0].items + i;
-        CASchedulerDialogItem* affinity_mask_item = dialog_layout.groups[1].items + i;
-        CASchedulerDialogItem* set_item = dialog_layout.groups[2].items + i;
+        CasDialogItem* process_item = dialog_layout.groups[0].items + i;
+        CasDialogItem* affinity_mask_item = dialog_layout.groups[1].items + i;
+        CasDialogItem* set_item = dialog_layout.groups[2].items + i;
 
-        *process_item = (CASchedulerDialogItem){ "", (WORD)(ID_PROCESS + i), ITEM_STRING, MAX_ITEMS_LENGTH };
-        *affinity_mask_item = (CASchedulerDialogItem){ "", (WORD)(ID_AFFINITY_MASK + i), ITEM_STRING, MAX_ITEMS_LENGTH };
-        *set_item = (CASchedulerDialogItem){ "", (WORD)(ID_SET + i), ITEM_CONST_STRING | ITEM_CENTER, 5 };
+        *process_item = (CasDialogItem){ "", (WORD)(ID_PROCESS + i), ITEM_STRING, MAX_ITEMS_LENGTH };
+        *affinity_mask_item = (CasDialogItem){ "", (WORD)(ID_AFFINITY_MASK + i), ITEM_STRING, MAX_ITEMS_LENGTH };
+        *set_item = (CasDialogItem){ "", (WORD)(ID_SET + i), ITEM_CONST_STRING | ITEM_CENTER, 5 };
     }
 
 	BYTE __declspec(align(4)) buffer[4096];
-	cascheduler__do_dialog_layout(&dialog_layout, buffer, sizeof(buffer));
+	cas__do_dialog_layout(&dialog_layout, buffer, sizeof(buffer));
 
-	return DialogBoxIndirectParamW(GetModuleHandleW(NULL), (LPCDLGTEMPLATEW)buffer, NULL, cascheduler_dialog__proc, (LPARAM)dialog_config);
+	return DialogBoxIndirectParamW(GetModuleHandleW(NULL), (LPCDLGTEMPLATEW)buffer, NULL, cas_dialog__proc, (LPARAM)dialog_config);
 }
 
-void cascheduler_dialog_register_callback(CASchedulerDialogCallback* dialog_callback, void* parameter, unsigned int id)
+void cas_dialog_register_callback(CasDialogCallback* dialog_callback, void* parameter, unsigned int id)
 {
     ASSERT(global_dialog_callback_count < ARRAY_COUNT(global_dialog_callbacks));
 
-    CASchedulerDialogCallbackStruct* dialog_callback_struct = global_dialog_callbacks + id;
+    CasDialogCallbackStruct* dialog_callback_struct = global_dialog_callbacks + id;
 
     ++global_dialog_callback_count;
     dialog_callback_struct->callback = dialog_callback;
     dialog_callback_struct->parameter = parameter;
 }
 
-void cascheduler_dialog_init(WCHAR* ini_path)
+void cas_dialog_init(WCHAR* ini_path)
 {
     global_ini_path = ini_path;
 }

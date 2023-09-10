@@ -2,6 +2,6 @@
 
 pushd build
 
-call CPUAffinityScheduler.exe
+call cas.exe
 
 popd

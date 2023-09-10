@@ -1,4 +1,4 @@
-#ifndef H_CASCHEDULER_H
+#ifndef H_CAS_H
 
 #define WIN32_LEAN_AND_MEAN
 #define _CRT_SECURE_NO_DEPRECATE
@@ -31,5 +31,5 @@
 
 #define ARRAY_COUNT(x)      (sizeof(x) / sizeof(*(x)))
 
-#define H_CASCHEDULER_H
+#define H_CAS_H
 #endif

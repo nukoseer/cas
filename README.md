@@ -1,3 +1,3 @@
-![](media/cascheduler256x256.png)
-# CPUAffinityScheduler
-CPUAffinityScheduler runs in the background and adjusts CPU affinity of running programs.
+![](media/cas256x256.png)
+# cas
+Simple utility for setting CPU affinity of processes for Windows.
