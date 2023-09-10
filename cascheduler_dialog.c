@@ -111,15 +111,22 @@ static unsigned int cascheduler_dialog__bits_to_integer(const WCHAR* bits, int l
     return result;
 }
 
+static int cascheduler_dialog__is_hex(WCHAR digit)
+{
+    int result = ((digit >= L'0' && digit <= L'9') ||
+                  (digit >= L'a' && digit <= L'f')  ||
+                  (digit >= L'A' && digit <= L'F'));
+
+    return result;
+}
+
 static int cascheduler_dialog__validate_hex(const WCHAR* hex, int length, const WCHAR** wrong_hex)
 {
     int result = 1;
 
     for (int i = 0; i < length; ++i)
     {
-        if ((hex[i] < L'0' && hex[i] > L'9' &&
-             hex[i] < L'a' && hex[i] > 'f' &&
-             hex[i] < L'F' && hex[i] > 'F'))
+        if (!cascheduler_dialog__is_hex(hex[i]))
         {
             result = 0;
             *wrong_hex = hex + i;
@@ -348,6 +355,32 @@ static LRESULT CALLBACK cascheduler_dialog__proc(HWND window, UINT message, WPAR
         else if (control == ID_VALUE)
         {
             cascheduler_dialog__convert_value(window);
+        }
+        else if (control >= ID_AFFINITY_MASK && control < ID_AFFINITY_MASK + MAX_ITEMS)
+        {
+            WCHAR* wrong_hex = 0;
+            WCHAR affinity_mask_string[64] = { 0 };
+            int affinity_mask_string_length = 0;
+
+            affinity_mask_string_length = GetDlgItemTextW(window, control, affinity_mask_string, ARRAY_COUNT(affinity_mask_string));
+
+            if (affinity_mask_string_length > 8)
+            {
+                affinity_mask_string[8] = '\0';                
+                SetDlgItemTextW(window, control, affinity_mask_string);
+                SendDlgItemMessageW(window, control, EM_SETSEL, 16, 16);
+            }
+            else if (!cascheduler_dialog__validate_hex(affinity_mask_string, affinity_mask_string_length, &wrong_hex))
+            {
+                if (wrong_hex)
+                {
+                    *wrong_hex = '\0';
+                }
+                
+                SetDlgItemTextW(window, control, affinity_mask_string);
+                SendDlgItemMessageW(window, control, EM_SETSEL, 16, 16);
+            }
+            
         }
 
         return TRUE;
@@ -681,7 +714,7 @@ LRESULT cascheduler_dialog_show(CASchedulerDialogConfig* dialog_config)
         CASchedulerDialogItem* set_item = dialog_layout.groups[2].items + i;
 
         *process_item = (CASchedulerDialogItem){ "", (WORD)(ID_PROCESS + i), ITEM_STRING, MAX_ITEMS_LENGTH };
-        *affinity_mask_item = (CASchedulerDialogItem){ "", (WORD)(ID_AFFINITY_MASK + i), ITEM_NUMBER, MAX_ITEMS_LENGTH };
+        *affinity_mask_item = (CASchedulerDialogItem){ "", (WORD)(ID_AFFINITY_MASK + i), ITEM_STRING, MAX_ITEMS_LENGTH };
         *set_item = (CASchedulerDialogItem){ "", (WORD)(ID_SET + i), ITEM_CONST_STRING | ITEM_CENTER, 5 };
     }
 
