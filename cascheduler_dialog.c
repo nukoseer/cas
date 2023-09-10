@@ -70,6 +70,7 @@ typedef struct
 } CASchedulerDialogCallbackStruct;
 
 static HWND global_dialog_window;
+static WCHAR* global_ini_path;
 static int global_started;
 static int global_value_type;
 static CASchedulerDialogCallbackStruct global_dialog_callbacks[3];
@@ -246,6 +247,34 @@ static void cascheduler_dialog__convert_value(HWND window)
     }
 }
 
+static void cascheduler_dialog__config_save(HWND window)
+{
+    WritePrivateProfileStringW(CASCHEDULER_DIALOG_INI_SECTION, 0, L"", global_ini_path);
+
+    // NOTE: We do reverse iteration because WritePrivateProfileSectionW insert names to beginning not to end.
+    for (int i = MAX_ITEMS - 1; i >= 0; --i)
+    {
+        WCHAR process_string[64] = { 0 };
+        WCHAR affinity_mask_string[64] = { 0 };
+        UINT process_length = 0;
+        UINT affinity_mask_length = 0;
+
+        process_length = GetDlgItemTextW(window, ID_PROCESS + i, process_string, ARRAY_COUNT(process_string));
+        affinity_mask_length = GetDlgItemTextW(window, ID_AFFINITY_MASK + i, affinity_mask_string, ARRAY_COUNT(affinity_mask_string));
+
+        if (process_length && affinity_mask_length)
+        {
+            WCHAR pair_string[128] = { 0 };
+            int length = 0;
+
+            length = _snwprintf(pair_string, ARRAY_COUNT(pair_string), L"%s", process_string);
+            pair_string[length++] = L':';
+            _snwprintf(pair_string + length, ARRAY_COUNT(pair_string) - length, L"%s", affinity_mask_string);
+            WritePrivateProfileSectionW(CASCHEDULER_DIALOG_INI_SECTION, pair_string, global_ini_path);
+        }
+    }
+}
+
 static LRESULT CALLBACK cascheduler_dialog__proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
 {
     if (message == WM_INITDIALOG)
@@ -285,6 +314,11 @@ static LRESULT CALLBACK cascheduler_dialog__proc(HWND window, UINT message, WPAR
         {
             if (!global_started)
             {
+                CASchedulerDialogConfig* dialog_config = (CASchedulerDialogConfig*)GetWindowLongPtrW(window, GWLP_USERDATA);
+
+                cascheduler_dialog__config_save(window);
+                cascheduler_dialog_config_load(dialog_config);
+
                 global_started = 1;
 
                 if (!global_dialog_timer_handle)
@@ -318,7 +352,7 @@ static LRESULT CALLBACK cascheduler_dialog__proc(HWND window, UINT message, WPAR
                 {
                     if (KillTimer(window, global_dialog_timer_handle))
                     {
-                        global_dialog_timer_handle = 0;   
+                        global_dialog_timer_handle = 0;
                     }
                 }
 
@@ -366,7 +400,7 @@ static LRESULT CALLBACK cascheduler_dialog__proc(HWND window, UINT message, WPAR
 
             if (affinity_mask_string_length > 8)
             {
-                affinity_mask_string[8] = '\0';                
+                affinity_mask_string[8] = '\0';
                 SetDlgItemTextW(window, control, affinity_mask_string);
                 SendDlgItemMessageW(window, control, EM_SETSEL, 16, 16);
             }
@@ -376,11 +410,11 @@ static LRESULT CALLBACK cascheduler_dialog__proc(HWND window, UINT message, WPAR
                 {
                     *wrong_hex = '\0';
                 }
-                
+
                 SetDlgItemTextW(window, control, affinity_mask_string);
                 SendDlgItemMessageW(window, control, EM_SETSEL, 16, 16);
             }
-            
+
         }
 
         return TRUE;
@@ -603,11 +637,11 @@ static void cascheduler__do_dialog_layout(const CASchedulerDialogLayout* dialog_
 	ASSERT(buffer <= end);
 }
 
-void cascheduler_dialog_config_load(CASchedulerDialogConfig* dialog_config, WCHAR* ini_path)
+void cascheduler_dialog_config_load(CASchedulerDialogConfig* dialog_config)
 {
     WIN32_FILE_ATTRIBUTE_DATA data;
 
-	if (!GetFileAttributesExW(ini_path, GetFileExInfoStandard, &data))
+	if (!GetFileAttributesExW(global_ini_path, GetFileExInfoStandard, &data))
 	{
 		// .ini file deleted?
 		return;
@@ -617,7 +651,7 @@ void cascheduler_dialog_config_load(CASchedulerDialogConfig* dialog_config, WCHA
 
     GetPrivateProfileSectionW(CASCHEDULER_DIALOG_INI_SECTION,
                               settings, ARRAY_COUNT(settings),
-                              ini_path);
+                              global_ini_path);
 
     WCHAR* pointer = settings;
     int pointer_length = 0;
@@ -645,16 +679,16 @@ void cascheduler_dialog_config_load(CASchedulerDialogConfig* dialog_config, WCHA
                 *colon = '\0';
 
                 lstrcpynW(dialog_config->processes[count], pair, ARRAY_COUNT(dialog_config->processes[count]));
-                UINT affinity_mask = wcstol(colon + 1, 0, 16);
+                long long affinity_mask = wcstoll(colon + 1, 0, 16);
 
-                if (!affinity_mask || affinity_mask == LONG_MAX || affinity_mask == LONG_MIN)
+                if (!affinity_mask || affinity_mask == LLONG_MAX || affinity_mask == LLONG_MIN)
                 {
                     MessageBoxW(0, L"Affinity mask has wrong format.", L"Warning!", MB_ICONWARNING);
                     break;
                 }
                 else
                 {
-                    dialog_config->affinity_masks[count] = affinity_mask;
+                    dialog_config->affinity_masks[count] = (UINT)affinity_mask;
                     ++count;
                 }
 
@@ -733,4 +767,9 @@ void cascheduler_dialog_register_callback(CASchedulerDialogCallback* dialog_call
     ++global_dialog_callback_count;
     dialog_callback_struct->callback = dialog_callback;
     dialog_callback_struct->parameter = parameter;
+}
+
+void cascheduler_dialog_init(WCHAR* ini_path)
+{
+    global_ini_path = ini_path;
 }

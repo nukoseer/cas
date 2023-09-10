@@ -20,8 +20,9 @@ typedef void CASchedulerDialogCallback(void* parameter);
 #define CASCHEDULER_DIALOG_CALLBACK(name) void (name)(void* parameter)
 
 void cascheduler_dialog_register_callback(CASchedulerDialogCallback* dialog_callback, void* parameter, unsigned int id);
-void cascheduler_dialog_config_load(CASchedulerDialogConfig* dialog_config, WCHAR* ini_path);
+void cascheduler_dialog_config_load(CASchedulerDialogConfig* dialog_config);
 LRESULT cascheduler_dialog_show(CASchedulerDialogConfig* dialog_config);
+void cascheduler_dialog_init(WCHAR* ini_path);
 
 #define H_CASCHEDULER_DIALOG_H
 #endif

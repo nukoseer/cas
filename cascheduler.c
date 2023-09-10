@@ -310,7 +310,8 @@ void WinMainCRTStartup(void)
     CloseHandle(timer_thread_handle);
 
     cascheduler__enable_debug_privilege();
-    cascheduler_dialog_config_load(&global_cascheduler.dialog_config, global_cascheduler.ini_path);
+    cascheduler_dialog_init(global_cascheduler.ini_path);
+    cascheduler_dialog_config_load(&global_cascheduler.dialog_config);
     cascheduler_dialog_register_callback(cascheduler__set_timer, global_cascheduler.timer_handle, ID_START);
     cascheduler_dialog_register_callback(cascheduler__stop_timer, global_cascheduler.timer_handle, ID_STOP);
     cascheduler_dialog_show(&global_cascheduler.dialog_config);
