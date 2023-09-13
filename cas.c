@@ -310,11 +310,9 @@ void WinMainCRTStartup(void)
     CloseHandle(timer_thread_handle);
 
     cas__enable_debug_privilege();
-    cas_dialog_init(global_cas.ini_path);
-    cas_dialog_config_load(&global_cas.dialog_config);
     cas_dialog_register_callback(cas__set_timer, global_cas.timer_handle, ID_START);
     cas_dialog_register_callback(cas__stop_timer, global_cas.timer_handle, ID_STOP);
-    cas_dialog_show(&global_cas.dialog_config);
+    cas_dialog_init(&global_cas.dialog_config, global_cas.ini_path);
 
     for (;;)
 	{

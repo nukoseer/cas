@@ -11,6 +11,8 @@
 #define ITEM_HEIGHT  (14)
 #define PADDING      (4)
 
+#define ID_AUTO_START     (10)
+#define ID_PERIOD         (11)
 #define ID_PROCESS        (100)
 #define ID_AFFINITY_MASK  (200)
 #define ID_SET            (300)
@@ -18,6 +20,7 @@
 #define ID_VALUE          (500)
 #define ID_RESULT         (600)
 
+#define ITEM_CHECKBOX     (1 << 0)
 #define ITEM_NUMBER       (1 << 1)
 #define ITEM_STRING       (1 << 2)
 #define ITEM_CONST_STRING (1 << 3)
@@ -30,7 +33,10 @@
 #define CONTROL_STATIC    (0x0082)
 #define CONTROL_COMBOBOX  (0x0085)
 
-#define CAS_DIALOG_INI_SECTION (L"settings")
+#define CAS_DIALOG_INI_PAIRS_SECTION    (L"pairs")
+#define CAS_DIALOG_INI_SETTINGS_SECTION (L"settings")
+
+#define CAS_DIALOG_INI_AUTO_START_KEY   (L"auto-start")
 
 typedef struct
 {
@@ -170,6 +176,9 @@ static void cas_dialog__set_values(HWND window, CasDialogConfig* dialog_config)
 
     HWND control = GetDlgItem(window, ID_VALUE_TYPE);
     ComboBox_SetCurSel(control, 0);
+
+    UINT auto_start = GetPrivateProfileIntW(CAS_DIALOG_INI_SETTINGS_SECTION, CAS_DIALOG_INI_AUTO_START_KEY, 0, global_ini_path);
+    CheckDlgButton(window, ID_AUTO_START, auto_start);
 }
 
 static void cas_dialog__convert_value(HWND window)
@@ -249,7 +258,7 @@ static void cas_dialog__convert_value(HWND window)
 
 static void cas_dialog__config_save(HWND window)
 {
-    WritePrivateProfileStringW(CAS_DIALOG_INI_SECTION, 0, L"", global_ini_path);
+    WritePrivateProfileStringW(CAS_DIALOG_INI_PAIRS_SECTION, 0, L"", global_ini_path);
 
     // NOTE: We do reverse iteration because WritePrivateProfileSectionW insert names to beginning not to end.
     for (int i = MAX_ITEMS - 1; i >= 0; --i)
@@ -270,7 +279,7 @@ static void cas_dialog__config_save(HWND window)
             length = _snwprintf(pair_string, ARRAY_COUNT(pair_string), L"%s", process_string);
             pair_string[length++] = L':';
             _snwprintf(pair_string + length, ARRAY_COUNT(pair_string) - length, L"%s", affinity_mask_string);
-            WritePrivateProfileSectionW(CAS_DIALOG_INI_SECTION, pair_string, global_ini_path);
+            WritePrivateProfileSectionW(CAS_DIALOG_INI_PAIRS_SECTION, pair_string, global_ini_path);
         }
     }
 }
@@ -415,6 +424,11 @@ static LRESULT CALLBACK cas_dialog__proc(HWND window, UINT message, WPARAM wpara
                 SendDlgItemMessageW(window, control, EM_SETSEL, 16, 16);
             }
 
+        }
+        else if (control == ID_AUTO_START)
+        {
+            UINT checked = IsDlgButtonChecked(window, ID_AUTO_START);
+            WritePrivateProfileStringW(CAS_DIALOG_INI_SETTINGS_SECTION, CAS_DIALOG_INI_AUTO_START_KEY, checked ? L"1" : L"0", global_ini_path);
         }
 
         return TRUE;
@@ -565,12 +579,20 @@ static void cas__do_dialog_layout(const CasDialogLayout* dialog_layout, BYTE* bu
             int has_const_string = !!(item->item & ITEM_CONST_STRING);
             int has_label = !!(item->item & ITEM_LABEL);
             int has_combobox = !!(item->item & ITEM_COMBOBOX);
+            int has_checkbox = !!(item->item & ITEM_CHECKBOX);
             int has_center = !!(item->item & ITEM_COMBOBOX);
 
 			int item_x = x;
 			int item_w = w;
 			int item_id = item->id;
 
+            if (has_checkbox)
+			{
+				buffer = cas__do_dialog_item(buffer, item->text, (WORD)item_id, (WORD)CONTROL_BUTTON, WS_TABSTOP | BS_AUTOCHECKBOX, item_x, y, item_w, ITEM_HEIGHT);
+				item_count++;
+				item_id++;
+			}
+            
             if (has_label)
             {
                 buffer = cas__do_dialog_item(buffer, item->text, (WORD)-1, (WORD)CONTROL_STATIC, 0, item_x, y, item->width, ITEM_HEIGHT);
@@ -649,7 +671,7 @@ void cas_dialog_config_load(CasDialogConfig* dialog_config)
 
     WCHAR settings[(sizeof(dialog_config->processes) + sizeof(dialog_config->affinity_masks))] = { 0 };
 
-    GetPrivateProfileSectionW(CAS_DIALOG_INI_SECTION,
+    GetPrivateProfileSectionW(CAS_DIALOG_INI_PAIRS_SECTION,
                               settings, ARRAY_COUNT(settings),
                               global_ini_path);
 
@@ -714,7 +736,7 @@ LRESULT cas_dialog_show(CasDialogConfig* dialog_config)
 		.font_size = 9,
 		.groups = (CasDialogGroup[])
 		{
-			{
+            {
 				.caption = "Processes",
 				.rect = { 0, 0, COL_WIDTH, ROW_HEIGHT },
 			},
@@ -727,8 +749,18 @@ LRESULT cas_dialog_show(CasDialogConfig* dialog_config)
 				.rect = { (COL_WIDTH + PADDING) * 2, 0, COL2_WIDTH, ROW_HEIGHT },
 			},
             {
+				.caption = "Settings",
+				.rect = { 0, ROW_HEIGHT, COL_WIDTH, ROW2_HEIGHT },
+                .items =
+                {
+                    { "Period (sec)", ID_PERIOD,     ITEM_NUMBER | ITEM_LABEL, 48 },
+                    { "Auto-start",   ID_AUTO_START, ITEM_CHECKBOX },
+                    { NULL },
+                },
+			},
+            {
 				.caption = "Convert",
-				.rect = { 0, ROW_HEIGHT, (COL_WIDTH + PADDING) * 2 + COL2_WIDTH, ROW2_HEIGHT },
+				.rect = { COL_WIDTH + PADDING, ROW_HEIGHT, (COL_WIDTH + PADDING) + COL2_WIDTH, ROW2_HEIGHT },
                 .items =
                 {
                     { "Value Type",  ID_VALUE_TYPE,  ITEM_COMBOBOX | ITEM_LABEL, 48 },
@@ -769,7 +801,22 @@ void cas_dialog_register_callback(CasDialogCallback* dialog_callback, void* para
     dialog_callback_struct->parameter = parameter;
 }
 
-void cas_dialog_init(WCHAR* ini_path)
+void cas_dialog_init(CasDialogConfig* dialog_config, WCHAR* ini_path)
 {
+    UINT auto_start = GetPrivateProfileIntW(CAS_DIALOG_INI_SETTINGS_SECTION, CAS_DIALOG_INI_AUTO_START_KEY, 0, ini_path);
     global_ini_path = ini_path;
+
+    if (auto_start)
+    {
+        CasDialogCallbackStruct* dialog_callback_struct = global_dialog_callbacks + ID_START;
+
+        global_started = 1;
+        cas_dialog_config_load(dialog_config);
+        dialog_callback_struct->callback(dialog_callback_struct->parameter);
+    }
+    else
+    {
+        cas_dialog_config_load(dialog_config);
+        cas_dialog_show(dialog_config);
+    }
 }
