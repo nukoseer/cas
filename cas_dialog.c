@@ -355,6 +355,8 @@ static LRESULT CALLBACK cas_dialog__proc(HWND window, UINT message, WPARAM wpara
         {
             if (global_started)
             {
+                CasDialogConfig* dialog_config = (CasDialogConfig*)GetWindowLongPtrW(window, GWLP_USERDATA);
+                
                 global_started = 0;
 
                 if (global_dialog_timer_handle)
@@ -370,6 +372,7 @@ static LRESULT CALLBACK cas_dialog__proc(HWND window, UINT message, WPARAM wpara
                     EnableWindow(GetDlgItem(window, ID_PROCESS + i), 1);
                     EnableWindow(GetDlgItem(window, ID_AFFINITY_MASK + i), 1);
                     SetDlgItemTextW(window, ID_SET + i, L"");
+                    dialog_config->sets[i] = 0;
                 }
 
                 CasDialogCallbackStruct* dialog_callback_struct = global_dialog_callbacks + ID_STOP;
