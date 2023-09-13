@@ -11,7 +11,7 @@ typedef struct
 {
     WCHAR processes[MAX_ITEMS][64];
 	UINT affinity_masks[MAX_ITEMS];
-    BOOL sets[MAX_ITEMS];
+    BOOL dones[MAX_ITEMS];
     DWORD value_type;
 } CasDialogConfig;
 

@@ -4,7 +4,7 @@
 #include "cas_dialog.h"
 
 #define COL_WIDTH    (150)
-#define COL2_WIDTH   (24)
+#define COL2_WIDTH   (26)
 #define ROW_HEIGHT   ((MAX_ITEMS + 1) * ITEM_HEIGHT)
 #define ROW2_HEIGHT  ((3 + 1) * ITEM_HEIGHT)
 #define BUTTON_WIDTH (50)
@@ -82,7 +82,7 @@ static int global_value_type;
 static CasDialogCallbackStruct global_dialog_callbacks[3];
 static unsigned int global_dialog_callback_count;
 static UINT_PTR global_dialog_timer_handle;
-static const char global_check_mark[] = "\x20\x00\x20\x00\x20\x00\x13\x27\x00\x00"; // NOTE: Three space and check mark for easy printing.
+static const char global_check_mark[] = "\x20\x00\x20\x00\x20\x00\x20\x00\x13\x27\x00\x00"; // NOTE: Four space and check mark for easy printing.
 
 static int cas_dialog__validate_bits(const WCHAR* bits, int length, const WCHAR** wrong_bit)
 {
@@ -171,7 +171,7 @@ static void cas_dialog__set_values(HWND window, CasDialogConfig* dialog_config)
             SetDlgItemTextW(window, ID_AFFINITY_MASK + i, L"");
         }
 
-        SetDlgItemTextW(window, ID_SET + i, dialog_config->sets[i] ? (WCHAR*)global_check_mark : L"");
+        SetDlgItemTextW(window, ID_SET + i, dialog_config->dones[i] ? (WCHAR*)global_check_mark : L"");
      }
 
     HWND control = GetDlgItem(window, ID_VALUE_TYPE);
@@ -372,7 +372,7 @@ static LRESULT CALLBACK cas_dialog__proc(HWND window, UINT message, WPARAM wpara
                     EnableWindow(GetDlgItem(window, ID_PROCESS + i), 1);
                     EnableWindow(GetDlgItem(window, ID_AFFINITY_MASK + i), 1);
                     SetDlgItemTextW(window, ID_SET + i, L"");
-                    dialog_config->sets[i] = 0;
+                    dialog_config->dones[i] = 0;
                 }
 
                 CasDialogCallbackStruct* dialog_callback_struct = global_dialog_callbacks + ID_STOP;
@@ -446,7 +446,7 @@ static LRESULT CALLBACK cas_dialog__proc(HWND window, UINT message, WPARAM wpara
             {
                 if (*dialog_config->processes[i])
                 {
-                    if (dialog_config->sets[i])
+                    if (dialog_config->dones[i])
                     {
                         SetDlgItemTextW(window, ID_SET + i, (WCHAR*)global_check_mark);
                     }
@@ -748,7 +748,7 @@ LRESULT cas_dialog_show(CasDialogConfig* dialog_config)
 				.rect = { COL_WIDTH + PADDING, 0, COL_WIDTH, ROW_HEIGHT },
 			},
             {
-				.caption = "Set",
+				.caption = "Done",
 				.rect = { (COL_WIDTH + PADDING) * 2, 0, COL2_WIDTH, ROW_HEIGHT },
 			},
             {
@@ -780,11 +780,11 @@ LRESULT cas_dialog_show(CasDialogConfig* dialog_config)
     {
         CasDialogItem* process_item = dialog_layout.groups[0].items + i;
         CasDialogItem* affinity_mask_item = dialog_layout.groups[1].items + i;
-        CasDialogItem* set_item = dialog_layout.groups[2].items + i;
+        CasDialogItem* done_item = dialog_layout.groups[2].items + i;
 
         *process_item = (CasDialogItem){ "", (WORD)(ID_PROCESS + i), ITEM_STRING, MAX_ITEMS_LENGTH };
         *affinity_mask_item = (CasDialogItem){ "", (WORD)(ID_AFFINITY_MASK + i), ITEM_STRING, MAX_ITEMS_LENGTH };
-        *set_item = (CasDialogItem){ "", (WORD)(ID_SET + i), ITEM_CONST_STRING | ITEM_CENTER, 5 };
+        *done_item = (CasDialogItem){ "", (WORD)(ID_SET + i), ITEM_CONST_STRING | ITEM_CENTER };
     }
 
 	BYTE __declspec(align(4)) buffer[4096];
