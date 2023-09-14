@@ -15,11 +15,6 @@ typedef struct
     DWORD value_type;
 } CasDialogConfig;
 
-typedef void CasDialogCallback(void* parameter);
-
-#define CAS_DIALOG_CALLBACK(name) void (name)(void* parameter)
-
-void cas_dialog_register_callback(CasDialogCallback* dialog_callback, void* parameter, unsigned int id);
 void cas_dialog_config_load(CasDialogConfig* dialog_config);
 LRESULT cas_dialog_show(CasDialogConfig* dialog_config);
 void cas_dialog_init(CasDialogConfig* dialog_config, WCHAR* ini_path);

@@ -11,7 +11,6 @@
 #define CMD_QUIT                  (2)
 
 #define SECONDS_TO_MILLISECONDS   (1000)
-#define TIMER_PERIOD              (SECONDS_TO_MILLISECONDS * 5)
 
 typedef struct
 {
@@ -123,28 +122,6 @@ static HANDLE cas__create_timer(void)
     return timer_handle;
 }
 
-static CAS_DIALOG_CALLBACK(cas__set_timer)
-{
-    HANDLE timer_handle = (HANDLE)parameter;
-    LARGE_INTEGER due_time = { 0 };
-    BOOL is_timer_set = 0;
-    FILETIME file_time = { 0 };
-
-    GetSystemTimeAsFileTime(&file_time);
-
-    due_time.LowPart = file_time.dwLowDateTime;
-    due_time.HighPart = file_time.dwHighDateTime;
-
-    is_timer_set = SetWaitableTimer(timer_handle, &due_time, TIMER_PERIOD, 0, 0, 0);
-    ASSERT(is_timer_set);
-}
-
-static CAS_DIALOG_CALLBACK(cas__stop_timer)
-{
-    HANDLE timer_handle = (HANDLE)parameter;
-    CancelWaitableTimer(timer_handle);
-}
-
 static void cas__show_notification(HWND window_handle, LPCWSTR message, LPCWSTR title, DWORD flags)
 {
 	NOTIFYICONDATAW data =
@@ -193,10 +170,6 @@ static LRESULT CALLBACK cas__window_proc(HWND window_handle, UINT message, WPARA
     }
     else if (message == WM_DESTROY)
 	{
-		// if (gRecording)
-		// {
-		// 	StopRecording();
-		// }
 		cas__remove_tray_icon(window_handle);
 		PostQuitMessage(0);
 
@@ -265,6 +238,26 @@ static DWORD WINAPI cas__timer_thread_proc(LPVOID parameter)
     return 0;
 }
 
+void cas_set_timer(int seconds)
+{
+    LARGE_INTEGER due_time = { 0 };
+    BOOL is_timer_set = 0;
+    FILETIME file_time = { 0 };
+
+    GetSystemTimeAsFileTime(&file_time);
+
+    due_time.LowPart = file_time.dwLowDateTime;
+    due_time.HighPart = file_time.dwHighDateTime;
+
+    is_timer_set = SetWaitableTimer(global_cas.timer_handle, &due_time, seconds * SECONDS_TO_MILLISECONDS, 0, 0, 0);
+    ASSERT(is_timer_set);
+}
+
+void cas_stop_timer(void)
+{
+    CancelWaitableTimer(global_cas.timer_handle);
+}
+
 #ifdef _DEBUG
 int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, int n_show_cmd)
 {
@@ -310,8 +303,6 @@ void WinMainCRTStartup(void)
     CloseHandle(timer_thread_handle);
 
     cas__enable_debug_privilege();
-    cas_dialog_register_callback(cas__set_timer, global_cas.timer_handle, ID_START);
-    cas_dialog_register_callback(cas__stop_timer, global_cas.timer_handle, ID_STOP);
     cas_dialog_init(&global_cas.dialog_config, global_cas.ini_path);
 
     for (;;)

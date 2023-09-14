@@ -31,5 +31,8 @@
 
 #define ARRAY_COUNT(x)      (sizeof(x) / sizeof(*(x)))
 
+void cas_set_timer(int seconds);
+void cas_stop_timer(void);
+
 #define H_CAS_H
 #endif

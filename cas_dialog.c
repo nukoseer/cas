@@ -37,6 +37,7 @@
 #define CAS_DIALOG_INI_SETTINGS_SECTION (L"settings")
 
 #define CAS_DIALOG_INI_AUTO_START_KEY   (L"auto-start")
+#define CAS_DIALOG_INI_PERIOD_KEY       (L"period")
 
 typedef struct
 {
@@ -69,18 +70,10 @@ typedef struct
     WORD font_size;
 } CasDialogLayout;
 
-typedef struct
-{
-    CasDialogCallback* callback;
-    void* parameter;
-} CasDialogCallbackStruct;
-
 static HWND global_dialog_window;
 static WCHAR* global_ini_path;
 static int global_started;
 static int global_value_type;
-static CasDialogCallbackStruct global_dialog_callbacks[3];
-static unsigned int global_dialog_callback_count;
 static UINT_PTR global_dialog_timer_handle;
 static const char global_check_mark[] = "\x20\x00\x20\x00\x20\x00\x20\x00\x13\x27\x00\x00"; // NOTE: Four space and check mark for easy printing.
 
@@ -179,6 +172,9 @@ static void cas_dialog__set_values(HWND window, CasDialogConfig* dialog_config)
 
     UINT auto_start = GetPrivateProfileIntW(CAS_DIALOG_INI_SETTINGS_SECTION, CAS_DIALOG_INI_AUTO_START_KEY, 0, global_ini_path);
     CheckDlgButton(window, ID_AUTO_START, auto_start);
+
+    UINT period = GetPrivateProfileIntW(CAS_DIALOG_INI_SETTINGS_SECTION, CAS_DIALOG_INI_PERIOD_KEY, 5, global_ini_path);
+    SetDlgItemInt(window, ID_PERIOD, period, FALSE);
 }
 
 static void cas_dialog__convert_value(HWND window)
@@ -332,7 +328,7 @@ static LRESULT CALLBACK cas_dialog__proc(HWND window, UINT message, WPARAM wpara
 
                 if (!global_dialog_timer_handle)
                 {
-                    global_dialog_timer_handle = SetTimer(window, 0, 3000, 0);
+                    global_dialog_timer_handle = SetTimer(window, 0, 1000, 0);
                 }
 
                 for (unsigned int i = 0; i < MAX_ITEMS; ++i)
@@ -341,12 +337,8 @@ static LRESULT CALLBACK cas_dialog__proc(HWND window, UINT message, WPARAM wpara
                     EnableWindow(GetDlgItem(window, ID_AFFINITY_MASK + i), 0);
                 }
 
-                CasDialogCallbackStruct* dialog_callback_struct = global_dialog_callbacks + ID_START;
-
-                if (dialog_callback_struct->callback)
-                {
-                    dialog_callback_struct->callback(dialog_callback_struct->parameter);
-                }
+                UINT period = GetPrivateProfileIntW(CAS_DIALOG_INI_SETTINGS_SECTION, CAS_DIALOG_INI_PERIOD_KEY, 5, global_ini_path);
+                cas_set_timer(period);
 
                 return TRUE;
             }
@@ -375,12 +367,7 @@ static LRESULT CALLBACK cas_dialog__proc(HWND window, UINT message, WPARAM wpara
                     dialog_config->dones[i] = 0;
                 }
 
-                CasDialogCallbackStruct* dialog_callback_struct = global_dialog_callbacks + ID_STOP;
-
-                if (dialog_callback_struct->callback)
-                {
-                    dialog_callback_struct->callback(dialog_callback_struct->parameter);
-                }
+                cas_stop_timer();
 
                 return TRUE;
             }
@@ -432,6 +419,21 @@ static LRESULT CALLBACK cas_dialog__proc(HWND window, UINT message, WPARAM wpara
         {
             UINT checked = IsDlgButtonChecked(window, ID_AUTO_START);
             WritePrivateProfileStringW(CAS_DIALOG_INI_SETTINGS_SECTION, CAS_DIALOG_INI_AUTO_START_KEY, checked ? L"1" : L"0", global_ini_path);
+        }
+        else if (control == ID_PERIOD)
+        {
+            WCHAR period_string[3] = { 0 };
+
+            UINT period = GetDlgItemInt(window, ID_PERIOD, 0, FALSE);
+
+            if (period > 99)
+            {
+                period = 99;
+                SetDlgItemInt(window, ID_PERIOD, period, FALSE);
+            }
+
+            _snwprintf(period_string, ARRAY_COUNT(period_string), L"%u", period);
+            WritePrivateProfileStringW(CAS_DIALOG_INI_SETTINGS_SECTION, CAS_DIALOG_INI_PERIOD_KEY, period_string, global_ini_path);
         }
 
         return TRUE;
@@ -793,29 +795,19 @@ LRESULT cas_dialog_show(CasDialogConfig* dialog_config)
 	return DialogBoxIndirectParamW(GetModuleHandleW(NULL), (LPCDLGTEMPLATEW)buffer, NULL, cas_dialog__proc, (LPARAM)dialog_config);
 }
 
-void cas_dialog_register_callback(CasDialogCallback* dialog_callback, void* parameter, unsigned int id)
-{
-    ASSERT(global_dialog_callback_count < ARRAY_COUNT(global_dialog_callbacks));
-
-    CasDialogCallbackStruct* dialog_callback_struct = global_dialog_callbacks + id;
-
-    ++global_dialog_callback_count;
-    dialog_callback_struct->callback = dialog_callback;
-    dialog_callback_struct->parameter = parameter;
-}
-
 void cas_dialog_init(CasDialogConfig* dialog_config, WCHAR* ini_path)
 {
     UINT auto_start = GetPrivateProfileIntW(CAS_DIALOG_INI_SETTINGS_SECTION, CAS_DIALOG_INI_AUTO_START_KEY, 0, ini_path);
+
     global_ini_path = ini_path;
 
     if (auto_start)
     {
-        CasDialogCallbackStruct* dialog_callback_struct = global_dialog_callbacks + ID_START;
-
+        UINT period = GetPrivateProfileIntW(CAS_DIALOG_INI_SETTINGS_SECTION, CAS_DIALOG_INI_PERIOD_KEY, 5, ini_path);
+        
         global_started = 1;
         cas_dialog_config_load(dialog_config);
-        dialog_callback_struct->callback(dialog_callback_struct->parameter);
+        cas_set_timer(period);
     }
     else
     {
