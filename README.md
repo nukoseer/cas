@@ -29,7 +29,7 @@ cas takes process name and affinity mask pairs as input from the user. It period
 
 # Download
 
-You can get latest build as zip archive here: [cas.zip][]
+You can get latest build as zip archive here: [cas.zip](https://raw.githubusercontent.com/wiki/nukoseer/cas/cas.zip)
 
 # Media
 
