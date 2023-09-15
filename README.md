@@ -4,6 +4,8 @@
 
 Simple utility for setting CPU affinity of processes for Windows.
 
+You can get latest build as zip archive here: [cas.zip](https://raw.githubusercontent.com/wiki/nukoseer/cas/cas.zip)
+
 # Usage
 
 cas takes process name and affinity mask pairs as input from the user. It periodically queries the given processes in the background to change the affinity masks.
@@ -26,10 +28,6 @@ cas takes process name and affinity mask pairs as input from the user. It period
 - Tray Menu (Right-click to tray icon)
   - cas: Redirects to this page.
   - Exit:  Quit cas.
-
-# Download
-
-You can get latest build as zip archive here: [cas.zip](https://raw.githubusercontent.com/wiki/nukoseer/cas/cas.zip)
 
 # Media
 
