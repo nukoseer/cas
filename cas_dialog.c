@@ -270,11 +270,11 @@ static void cas_dialog__config_save(HWND window)
         if (process_length && affinity_mask_length)
         {
             WCHAR pair_string[128] = { 0 };
-            int length = 0;
+            int length = process_length;
 
-            length = _snwprintf(pair_string, ARRAY_COUNT(pair_string), L"%s", process_string);
+            memcpy(pair_string, process_string, length * sizeof(WCHAR));
             pair_string[length++] = L':';
-            _snwprintf(pair_string + length, ARRAY_COUNT(pair_string) - length, L"%s", affinity_mask_string);
+            memcpy(pair_string + length, affinity_mask_string, affinity_mask_length * sizeof(WCHAR));
             WritePrivateProfileSectionW(CAS_DIALOG_INI_PAIRS_SECTION, pair_string, global_ini_path);
         }
     }
