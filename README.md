@@ -1,11 +1,15 @@
 ![](media/cas256x256.png)
+
 # cas
+
 Simple utility for setting CPU affinity of processes for Windows.
 
 # Usage
+
 cas takes process name and affinity mask pairs as input from the user. It periodically queries the given processes in the background to change the affinity masks.
 
 ## User Dialog
+
 - Processes (List of process names to query - every process needs matching affinity mask)
 - Affinity Masks (List of affinity masks to set for given process - affinity mask should be given in hex format)
 - Done (Indicator to see if desired affinity masks is set)
@@ -23,6 +27,11 @@ cas takes process name and affinity mask pairs as input from the user. It period
   - cas: Redirects to this page.
   - Exit:  Quit cas.
 
+# Download
+
+You can get latest build as zip archive here: [cas.zip][]
+
 # Media
+
 ![](media/cas_dialog.png)
 
