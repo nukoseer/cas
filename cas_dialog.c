@@ -167,7 +167,7 @@ static void cas_dialog__set_values(HWND window, CasDialogConfig* dialog_config)
         }
 
         SetDlgItemTextW(window, ID_SET + i, dialog_config->dones[i] ? (WCHAR*)global_check_mark : L"");
-     }
+    }
 
     HWND control = GetDlgItem(window, ID_VALUE_TYPE);
     ComboBox_SetCurSel(control, 0);
@@ -351,7 +351,7 @@ static LRESULT CALLBACK cas_dialog__proc(HWND window, UINT message, WPARAM wpara
             if (global_started)
             {
                 CasDialogConfig* dialog_config = (CasDialogConfig*)GetWindowLongPtrW(window, GWLP_USERDATA);
-                
+
                 global_started = 0;
 
                 if (global_dialog_timer_handle)
@@ -600,7 +600,7 @@ static void cas__do_dialog_layout(const CasDialogLayout* dialog_layout, BYTE* bu
 				item_count++;
 				item_id++;
 			}
-            
+
             if (has_label)
             {
                 buffer = cas__do_dialog_item(buffer, item->text, (WORD)-1, (WORD)CONTROL_STATIC, 0, item_x, y, item->width, ITEM_HEIGHT);
@@ -808,7 +808,7 @@ void cas_dialog_init(CasDialogConfig* dialog_config, WCHAR* ini_path, HICON icon
     if (auto_start)
     {
         UINT period = GetPrivateProfileIntW(CAS_DIALOG_INI_SETTINGS_SECTION, CAS_DIALOG_INI_PERIOD_KEY, 5, ini_path);
-        
+
         global_started = 1;
         cas_dialog_config_load(dialog_config);
         cas_set_timer(period);

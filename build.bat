@@ -25,8 +25,7 @@ if %debug%==yes (
    set common_linker_flags=%common_linker_flags% %release_linker_flags%
 )
 
-rc.exe /nologo ..\cas.rc 
-%compiler% %common_compiler_flags% ..\cas.c ..\cas_dialog.c /link ..\cas.res %common_linker_flags% /out:cas.exe 
+rc.exe /nologo ..\cas.rc
+%compiler% %common_compiler_flags% ..\cas.c ..\cas_dialog.c /link ..\cas.res %common_linker_flags% /out:cas.exe
 
 popd
-
