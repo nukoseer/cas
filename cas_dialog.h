@@ -17,7 +17,7 @@ typedef struct
 
 void cas_dialog_config_load(CasDialogConfig* dialog_config);
 LRESULT cas_dialog_show(CasDialogConfig* dialog_config);
-void cas_dialog_init(CasDialogConfig* dialog_config, WCHAR* ini_path);
+void cas_dialog_init(CasDialogConfig* dialog_config, WCHAR* ini_path, HICON icon);
 
 #define H_CAS_DIALOG_H
 #endif

@@ -72,10 +72,12 @@ typedef struct
 
 static HWND global_dialog_window;
 static WCHAR* global_ini_path;
+static HICON global_icon;
 static int global_started;
 static int global_value_type;
 static UINT_PTR global_dialog_timer_handle;
 static const char global_check_mark[] = "\x20\x00\x20\x00\x20\x00\x20\x00\x13\x27\x00\x00"; // NOTE: Four space and check mark for easy printing.
+
 
 static int cas_dialog__validate_bits(const WCHAR* bits, int length, const WCHAR** wrong_bit)
 {
@@ -288,6 +290,7 @@ static LRESULT CALLBACK cas_dialog__proc(HWND window, UINT message, WPARAM wpara
 
         SetWindowLongPtrW(window, GWLP_USERDATA, (LONG_PTR)dialog_config);
 
+        SendMessage(window, WM_SETICON, ICON_BIG, (LPARAM)global_icon);
         SendDlgItemMessageW(window, ID_VALUE_TYPE, CB_ADDSTRING, 0, (LPARAM)L"Bit");
 		SendDlgItemMessageW(window, ID_VALUE_TYPE, CB_ADDSTRING, 0, (LPARAM)L"Hex");
 
@@ -795,11 +798,12 @@ LRESULT cas_dialog_show(CasDialogConfig* dialog_config)
 	return DialogBoxIndirectParamW(GetModuleHandleW(NULL), (LPCDLGTEMPLATEW)buffer, NULL, cas_dialog__proc, (LPARAM)dialog_config);
 }
 
-void cas_dialog_init(CasDialogConfig* dialog_config, WCHAR* ini_path)
+void cas_dialog_init(CasDialogConfig* dialog_config, WCHAR* ini_path, HICON icon)
 {
     UINT auto_start = GetPrivateProfileIntW(CAS_DIALOG_INI_SETTINGS_SECTION, CAS_DIALOG_INI_AUTO_START_KEY, 0, ini_path);
 
     global_ini_path = ini_path;
+    global_icon = icon;
 
     if (auto_start)
     {

@@ -303,7 +303,7 @@ void WinMainCRTStartup(void)
     CloseHandle(timer_thread_handle);
 
     cas__enable_debug_privilege();
-    cas_dialog_init(&global_cas.dialog_config, global_cas.ini_path);
+    cas_dialog_init(&global_cas.dialog_config, global_cas.ini_path, global_cas.icon);
 
     for (;;)
 	{
