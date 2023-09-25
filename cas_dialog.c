@@ -39,6 +39,8 @@
 #define CAS_DIALOG_INI_AUTO_START_KEY   (L"auto-start")
 #define CAS_DIALOG_INI_PERIOD_KEY       (L"period")
 
+#define CAS_DIALOG_TIMER_HANDLE_ID      (1)
+
 typedef struct
 {
 	int left;
@@ -75,7 +77,6 @@ static WCHAR* global_ini_path;
 static HICON global_icon;
 static int global_started;
 static int global_value_type;
-static UINT_PTR global_dialog_timer_handle;
 static const char global_check_mark[] = "\x20\x00\x20\x00\x20\x00\x20\x00\x13\x27\x00\x00"; // NOTE: Four space and check mark for easy printing.
 
 
@@ -303,6 +304,8 @@ static LRESULT CALLBACK cas_dialog__proc(HWND window, UINT message, WPARAM wpara
                 EnableWindow(GetDlgItem(window, ID_PROCESS + i), 0);
                 EnableWindow(GetDlgItem(window, ID_AFFINITY_MASK + i), 0);
             }
+
+            SetTimer(window, CAS_DIALOG_TIMER_HANDLE_ID, 1000, 0);
         }
 
         SetForegroundWindow(window);
@@ -313,6 +316,7 @@ static LRESULT CALLBACK cas_dialog__proc(HWND window, UINT message, WPARAM wpara
     else if (message == WM_DESTROY)
     {
         global_dialog_window = 0;
+        KillTimer(window, CAS_DIALOG_TIMER_HANDLE_ID);
     }
     else if (message == WM_COMMAND)
 	{
@@ -329,10 +333,7 @@ static LRESULT CALLBACK cas_dialog__proc(HWND window, UINT message, WPARAM wpara
 
                 global_started = 1;
 
-                if (!global_dialog_timer_handle)
-                {
-                    global_dialog_timer_handle = SetTimer(window, 0, 1000, 0);
-                }
+                SetTimer(window, CAS_DIALOG_TIMER_HANDLE_ID, 1000, 0);
 
                 for (unsigned int i = 0; i < MAX_ITEMS; ++i)
                 {
@@ -354,13 +355,7 @@ static LRESULT CALLBACK cas_dialog__proc(HWND window, UINT message, WPARAM wpara
 
                 global_started = 0;
 
-                if (global_dialog_timer_handle)
-                {
-                    if (KillTimer(window, global_dialog_timer_handle))
-                    {
-                        global_dialog_timer_handle = 0;
-                    }
-                }
+                KillTimer(window, CAS_DIALOG_TIMER_HANDLE_ID);
 
                 for (unsigned int i = 0; i < MAX_ITEMS; ++i)
                 {
