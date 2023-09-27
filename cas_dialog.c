@@ -72,13 +72,13 @@ typedef struct
     WORD font_size;
 } CasDialogLayout;
 
+static SYSTEM_INFO global_system_info;
 static HWND global_dialog_window;
 static WCHAR* global_ini_path;
 static HICON global_icon;
 static int global_started;
 static int global_value_type;
 static const char global_check_mark[] = "\x20\x00\x20\x00\x20\x00\x20\x00\x13\x27\x00\x00"; // NOTE: Four space and check mark for easy printing.
-
 
 static int cas_dialog__validate_bits(const WCHAR* bits, int length, const WCHAR** wrong_bit)
 {
@@ -328,21 +328,23 @@ static LRESULT CALLBACK cas_dialog__proc(HWND window, UINT message, WPARAM wpara
             {
                 CasDialogConfig* dialog_config = (CasDialogConfig*)GetWindowLongPtrW(window, GWLP_USERDATA);
 
-                cas_dialog__config_save(window);
-                cas_dialog_config_load(dialog_config);
+                cas_dialog__config_save(window);   
 
-                global_started = 1;
-
-                SetTimer(window, CAS_DIALOG_TIMER_HANDLE_ID, 1000, 0);
-
-                for (unsigned int i = 0; i < MAX_ITEMS; ++i)
+                if (cas_dialog_config_load(dialog_config))
                 {
-                    EnableWindow(GetDlgItem(window, ID_PROCESS + i), 0);
-                    EnableWindow(GetDlgItem(window, ID_AFFINITY_MASK + i), 0);
-                }
+                    global_started = 1;
 
-                UINT period = GetPrivateProfileIntW(CAS_DIALOG_INI_SETTINGS_SECTION, CAS_DIALOG_INI_PERIOD_KEY, 5, global_ini_path);
-                cas_set_timer(period);
+                    SetTimer(window, CAS_DIALOG_TIMER_HANDLE_ID, 1000, 0);
+
+                    for (unsigned int i = 0; i < MAX_ITEMS; ++i)
+                    {
+                        EnableWindow(GetDlgItem(window, ID_PROCESS + i), 0);
+                        EnableWindow(GetDlgItem(window, ID_AFFINITY_MASK + i), 0);
+                    }
+
+                    UINT period = GetPrivateProfileIntW(CAS_DIALOG_INI_SETTINGS_SECTION, CAS_DIALOG_INI_PERIOD_KEY, 5, global_ini_path);
+                    cas_set_timer(period);
+                }
 
                 return TRUE;
             }
@@ -395,11 +397,11 @@ static LRESULT CALLBACK cas_dialog__proc(HWND window, UINT message, WPARAM wpara
 
             affinity_mask_string_length = GetDlgItemTextW(window, control, affinity_mask_string, ARRAY_COUNT(affinity_mask_string));
 
-            if (affinity_mask_string_length > 8)
+            if (affinity_mask_string_length > (int)global_system_info.dwNumberOfProcessors / 2)
             {
-                affinity_mask_string[8] = '\0';
+                affinity_mask_string[global_system_info.dwNumberOfProcessors / 2] = '\0';
                 SetDlgItemTextW(window, control, affinity_mask_string);
-                SendDlgItemMessageW(window, control, EM_SETSEL, 16, 16);
+                SendDlgItemMessageW(window, control, EM_SETSEL, global_system_info.dwNumberOfProcessors, global_system_info.dwNumberOfProcessors);
             }
             else if (!cas_dialog__validate_hex(affinity_mask_string, affinity_mask_string_length, &wrong_hex))
             {
@@ -409,7 +411,7 @@ static LRESULT CALLBACK cas_dialog__proc(HWND window, UINT message, WPARAM wpara
                 }
 
                 SetDlgItemTextW(window, control, affinity_mask_string);
-                SendDlgItemMessageW(window, control, EM_SETSEL, 16, 16);
+                SendDlgItemMessageW(window, control, EM_SETSEL, global_system_info.dwNumberOfProcessors, global_system_info.dwNumberOfProcessors);
             }
 
         }
@@ -662,14 +664,16 @@ static void cas__do_dialog_layout(const CasDialogLayout* dialog_layout, BYTE* bu
 	ASSERT(buffer <= end);
 }
 
-void cas_dialog_config_load(CasDialogConfig* dialog_config)
+int cas_dialog_config_load(CasDialogConfig* dialog_config)
 {
+    int result = TRUE;
     WIN32_FILE_ATTRIBUTE_DATA data;
 
 	if (!GetFileAttributesExW(global_ini_path, GetFileExInfoStandard, &data))
 	{
+        MessageBoxW(0, L"cas.ini may be deleted.", L"Warning!", MB_ICONWARNING);
 		// .ini file deleted?
-		return;
+		return FALSE;
 	}
 
     WCHAR settings[(sizeof(dialog_config->processes) + sizeof(dialog_config->affinity_masks))] = { 0 };
@@ -687,6 +691,7 @@ void cas_dialog_config_load(CasDialogConfig* dialog_config)
         if (count == MAX_ITEMS)
         {
             MessageBoxW(0, L"More than 16 items is not supported.", L"Warning!", MB_ICONWARNING);
+            result = FALSE;
             break;
         }
 
@@ -706,9 +711,10 @@ void cas_dialog_config_load(CasDialogConfig* dialog_config)
                 lstrcpynW(dialog_config->processes[count], pair, ARRAY_COUNT(dialog_config->processes[count]));
                 long long affinity_mask = wcstoll(colon + 1, 0, 16);
 
-                if (!affinity_mask || affinity_mask == LLONG_MAX || affinity_mask == LLONG_MIN)
+                if (!affinity_mask || affinity_mask == LLONG_MAX || affinity_mask == LLONG_MIN || affinity_mask > (long long)global_system_info.dwActiveProcessorMask)
                 {
                     MessageBoxW(0, L"Affinity mask has wrong format.", L"Warning!", MB_ICONWARNING);
+                    result = FALSE;
                     break;
                 }
                 else
@@ -718,10 +724,18 @@ void cas_dialog_config_load(CasDialogConfig* dialog_config)
                 }
 
             }
+            else
+            {
+                MessageBoxW(0, L"cas.ini may be corrupted.", L"Warning!", MB_ICONWARNING);
+                result = FALSE;
+                break;
+            }
         }
 
         pointer += pointer_length + 1;
     }
+
+    return result;
 }
 
 LRESULT cas_dialog_show(CasDialogConfig* dialog_config)
@@ -732,6 +746,10 @@ LRESULT cas_dialog_show(CasDialogConfig* dialog_config)
 		return FALSE;
 	}
 
+    char* affinity_masks_caption[64] = { 0 };
+    snprintf((char*)affinity_masks_caption, sizeof(affinity_masks_caption),
+             "Affinity Masks (Hex), Max: %X", (int)global_system_info.dwActiveProcessorMask);
+    
 	CasDialogLayout dialog_layout = (CasDialogLayout)
 	{
 		.title = "cas",
@@ -744,7 +762,7 @@ LRESULT cas_dialog_show(CasDialogConfig* dialog_config)
 				.rect = { 0, 0, COL_WIDTH, ROW_HEIGHT },
 			},
 			{
-				.caption = "Affinity Masks (Hex)",
+				.caption = (const char*)affinity_masks_caption,
 				.rect = { COL_WIDTH + PADDING, 0, COL_WIDTH, ROW_HEIGHT },
 			},
             {
@@ -799,6 +817,8 @@ void cas_dialog_init(CasDialogConfig* dialog_config, WCHAR* ini_path, HICON icon
 
     global_ini_path = ini_path;
     global_icon = icon;
+
+    GetSystemInfo(&global_system_info);
 
     if (auto_start)
     {

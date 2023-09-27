@@ -15,7 +15,7 @@ typedef struct
     DWORD value_type;
 } CasDialogConfig;
 
-void cas_dialog_config_load(CasDialogConfig* dialog_config);
+int cas_dialog_config_load(CasDialogConfig* dialog_config);
 LRESULT cas_dialog_show(CasDialogConfig* dialog_config);
 void cas_dialog_init(CasDialogConfig* dialog_config, WCHAR* ini_path, HICON icon);
 
