@@ -72,6 +72,7 @@ typedef struct
     WORD font_size;
 } CasDialogLayout;
 
+static BOOL global_is_elavated;
 static SYSTEM_INFO global_system_info;
 static HWND global_dialog_window;
 static WCHAR* global_ini_path;
@@ -79,6 +80,30 @@ static HICON global_icon;
 static int global_started;
 static int global_value_type;
 static const char global_check_mark[] = "\x20\x00\x20\x00\x20\x00\x20\x00\x13\x27\x00\x00"; // NOTE: Four space and check mark for easy printing.
+
+static BOOL cas__is_elavated(void)
+{
+    BOOL result = FALSE;
+    HANDLE token_handle = NULL;
+
+    if (OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token_handle))
+    {
+        TOKEN_ELEVATION elevation;
+        DWORD cb_size = sizeof(TOKEN_ELEVATION);
+
+        if (GetTokenInformation(token_handle, TokenElevation, &elevation, sizeof(elevation), &cb_size))
+        {
+            result = elevation.TokenIsElevated;
+        }
+    }
+
+    if (token_handle)
+    {
+        CloseHandle(token_handle);
+    }
+
+    return result;
+}
 
 static int cas_dialog__validate_bits(const WCHAR* bits, int length, const WCHAR** wrong_bit)
 {
@@ -328,7 +353,7 @@ static LRESULT CALLBACK cas_dialog__proc(HWND window, UINT message, WPARAM wpara
             {
                 CasDialogConfig* dialog_config = (CasDialogConfig*)GetWindowLongPtrW(window, GWLP_USERDATA);
 
-                cas_dialog__config_save(window);   
+                cas_dialog__config_save(window);
 
                 if (cas_dialog_config_load(dialog_config))
                 {
@@ -746,13 +771,16 @@ LRESULT cas_dialog_show(CasDialogConfig* dialog_config)
 		return FALSE;
 	}
 
+    char* title[64] = { 0 };
+    snprintf((char*)title, sizeof(title),
+             "cas%s", global_is_elavated ? "" : " (no administrator rights)");
     char* affinity_masks_caption[64] = { 0 };
     snprintf((char*)affinity_masks_caption, sizeof(affinity_masks_caption),
              "Affinity Masks (Hex), Max: %X", (int)global_system_info.dwActiveProcessorMask);
-    
+
 	CasDialogLayout dialog_layout = (CasDialogLayout)
 	{
-		.title = "cas",
+		.title = (const char*)title,
 		.font = "Segoe UI",
 		.font_size = 9,
 		.groups = (CasDialogGroup[])
@@ -817,6 +845,7 @@ void cas_dialog_init(CasDialogConfig* dialog_config, WCHAR* ini_path, HICON icon
 
     global_ini_path = ini_path;
     global_icon = icon;
+    global_is_elavated = cas__is_elavated();
 
     GetSystemInfo(&global_system_info);
 
