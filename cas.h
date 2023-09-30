@@ -1,5 +1,6 @@
 #ifndef H_CAS_H
 
+#define COBJMACROS
 #define WIN32_LEAN_AND_MEAN
 #define _CRT_SECURE_NO_DEPRECATE
 #define _CRT_SECURE_NO_WARNINGS
@@ -10,6 +11,8 @@
 #include <tlhelp32.h>
 #include <shellapi.h>
 #include <shlwapi.h>
+#include <shlobj.h>
+#include <roapi.h>
 #include <windowsx.h>
 #include <string.h>
 #include <stdio.h>
@@ -22,6 +25,8 @@
 #pragma comment (lib, "Gdi32")
 #pragma comment (lib, "Shlwapi")
 #pragma comment (lib, "Shell32")
+#pragma comment (lib, "Ole32")
+#pragma comment (lib, "RuntimeObject")
 
 #ifdef _DEBUG
 #define ASSERT(x) do { if (!(x)) { *(volatile int*)0; } } while (0)

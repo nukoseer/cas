@@ -23,6 +23,49 @@ typedef struct
 
 static Cas global_cas;
 
+// NOTE: https://learn.microsoft.com/en-us/windows/win32/shell/how-to-add-shortcuts-to-the-start-menu
+static void cas__create_shortcut_link(void)
+{
+    HRESULT handle_result = 0;
+    WCHAR link_path[MAX_PATH];
+
+    RoInitialize(RO_INIT_SINGLETHREADED);
+
+    GetEnvironmentVariableW(L"APPDATA", link_path, ARRAY_COUNT(link_path));
+    PathAppendW(link_path, L"Microsoft\\Windows\\Start Menu\\Programs");
+    PathAppendW(link_path, CAS_NAME);
+    StrCatW(link_path, L".lnk");
+
+    if (GetFileAttributesW(link_path) == INVALID_FILE_ATTRIBUTES)
+    {
+        IShellLinkW* shell_link;
+
+        handle_result = CoCreateInstance(&CLSID_ShellLink, NULL, CLSCTX_INPROC_SERVER, &IID_IShellLinkW, (LPVOID*)&shell_link);
+
+        if (SUCCEEDED(handle_result))
+        {
+            IPersistFile* persist_file;
+            WCHAR exe_path[MAX_PATH];
+
+            GetModuleFileNameW(NULL, exe_path, ARRAY_COUNT(exe_path));
+
+            IShellLinkW_SetPath(shell_link, exe_path);
+            PathRemoveFileSpecW(exe_path);
+            IShellLinkW_SetWorkingDirectory(shell_link, exe_path);
+
+            handle_result = IShellLinkW_QueryInterface(shell_link, &IID_IPersistFile, (LPVOID*)&persist_file);
+
+            if (SUCCEEDED(handle_result))
+            {
+                handle_result = IPersistFile_Save(persist_file, link_path, TRUE);
+                IPersistFile_Release(persist_file);
+            }
+
+            IShellLinkW_Release(shell_link);
+        }
+    }
+}
+
 static void cas__enable_debug_privilege(void)
 {
     HANDLE token_handle = 0;
@@ -281,27 +324,25 @@ void WinMainCRTStartup(void)
 		ExitProcess(0);
 	}
 
-    WCHAR exe_folder[MAX_PATH];
-    GetModuleFileNameW(NULL, exe_folder, ARRAY_COUNT(exe_folder));
-	PathRemoveFileSpecW(exe_folder);
-    PathCombineW(global_cas.ini_path, exe_folder, CAS_INI);
-
-    global_cas.icon = LoadIconW(GetModuleHandleW(0), MAKEINTRESOURCEW(1));
-
     ATOM atom = RegisterClassExW(&window_class);
 	ASSERT(atom);
 
 	RegisterWindowMessageW(L"TaskbarCreated");
 
+    global_cas.icon = LoadIconW(GetModuleHandleW(0), MAKEINTRESOURCEW(1));
     global_cas.window_handle = CreateWindowExW(0, window_class.lpszClassName, window_class.lpszClassName, WS_POPUP,
                                                 CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
                                                 NULL, NULL, window_class.hInstance, NULL);
     global_cas.timer_handle = cas__create_timer();
 
-    HANDLE timer_thread_handle = CreateThread(0, 0, (LPTHREAD_START_ROUTINE)&cas__timer_thread_proc, (LPVOID)&global_cas, 0, 0);
-    ASSERT(timer_thread_handle);
-    CloseHandle(timer_thread_handle);
+    CloseHandle(CreateThread(0, 0, (LPTHREAD_START_ROUTINE)&cas__timer_thread_proc, (LPVOID)&global_cas, 0, 0));
 
+    WCHAR exe_path[MAX_PATH];
+    GetModuleFileNameW(NULL, exe_path, ARRAY_COUNT(exe_path));
+    PathRemoveFileSpecW(exe_path);
+    PathCombineW(global_cas.ini_path, exe_path, CAS_INI);
+
+    cas__create_shortcut_link();
     cas__enable_debug_privilege();
     cas_dialog_init(&global_cas.dialog_config, global_cas.ini_path, global_cas.icon);
 
