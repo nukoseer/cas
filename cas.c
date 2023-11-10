@@ -23,6 +23,92 @@ typedef struct
 
 static Cas global_cas;
 
+static BOOL cas__get_psid(PSID* psid)
+{
+    BOOL result = FALSE;
+    HANDLE token_handle = 0;
+    char token_information[64] = { 0 };
+    DWORD return_length = 0;
+
+    if (OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token_handle))
+    {
+        if (GetTokenInformation(token_handle, TokenUser, token_information, sizeof(token_information), &return_length))
+        {
+            TOKEN_USER* token_user = (TOKEN_USER*)token_information;
+            *psid = token_user->User.Sid;
+            result = TRUE;
+        }
+
+        CloseHandle(token_handle);
+    }
+
+    return result;
+}
+
+static LSA_HANDLE cas__get_lookup_policy_handle(void)
+{
+    LSA_OBJECT_ATTRIBUTES object_attributes = { 0 };
+    LSA_HANDLE policy_handle = 0;
+
+    LsaOpenPolicy(0, &object_attributes, POLICY_LOOKUP_NAMES, &policy_handle);
+
+    return policy_handle;
+}
+
+static BOOL cas__get_sid_full_name(PSID psid, WCHAR* full_name)
+{
+    BOOL result = FALSE;
+    NTSTATUS status = 0;
+    LSA_HANDLE policy_handle = 0;
+    PLSA_REFERENCED_DOMAIN_LIST referenced_domains = 0;
+    PLSA_TRANSLATED_NAME names = 0;
+
+    policy_handle = cas__get_lookup_policy_handle();
+
+    if (policy_handle)
+    {
+        status = LsaLookupSids(policy_handle, 1, &psid, &referenced_domains, &names);
+
+        if (STATUS_SUCCESS == status)
+        {
+            if (names[0].Use != SidTypeInvalid && names[0].Use != SidTypeUnknown)
+            {
+                PWSTR domain_name_buffer = 0;
+                ULONG domain_name_length = 0;
+
+                if (names[0].DomainIndex >= 0)
+                {
+                    PLSA_TRUST_INFORMATION trustInfo;
+
+                    trustInfo = &referenced_domains->Domains[names[0].DomainIndex];
+                    domain_name_buffer = trustInfo->Name.Buffer;
+                    domain_name_length = trustInfo->Name.Length;
+                }
+
+                if (domain_name_buffer && domain_name_length != 0)
+                {
+                    memcpy(full_name, domain_name_buffer, domain_name_length);
+                    full_name[domain_name_length / sizeof(WCHAR)] = L'\\';
+                    memcpy(full_name + domain_name_length / sizeof(WCHAR) + 1, names[0].Name.Buffer, names[0].Name.Length);
+                    result = TRUE;
+                }
+                else
+                {
+                    memcpy(full_name, &names[0].Name, names[0].Name.Length);
+                    result = TRUE;
+                }
+            }
+        }
+
+        if (referenced_domains)
+            LsaFreeMemory(referenced_domains);
+        if (names)
+            LsaFreeMemory(names);
+    }
+
+    return result;
+}
+
 // NOTE: https://learn.microsoft.com/en-us/windows/win32/shell/how-to-add-shortcuts-to-the-start-menu
 static void cas__create_shortcut_link(void)
 {
@@ -66,25 +152,6 @@ static void cas__create_shortcut_link(void)
     }
 }
 
-static void cas__enable_debug_privilege(void)
-{
-    HANDLE token_handle = 0;
-    LUID luid = { 0 };
-    TOKEN_PRIVILEGES tkp = { 0 };
-
-    OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &token_handle);
-
-    LookupPrivilegeValue(NULL, SE_DEBUG_NAME, &luid);
-
-    tkp.PrivilegeCount = 1;
-    tkp.Privileges[0].Luid = luid;
-    tkp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
-
-    AdjustTokenPrivileges(token_handle, 0, &tkp, sizeof(tkp), NULL, NULL);
-
-    CloseHandle(token_handle);
-}
-
 static BOOL cas__set_cpu_affinity(PROCESSENTRY32W* entry, unsigned int desired_affinity_mask)
 {
     BOOL set = 0;
@@ -124,7 +191,7 @@ static void cas__cpu_affinity_routine(CasDialogConfig* dialog_config)
     for (i = 0; i < MAX_ITEMS; ++i)
     {
         WCHAR* process = dialog_config->processes[i];
-        BOOL found = 0;
+        BOOL found = FALSE;
 
         if (*process)
         {
@@ -137,7 +204,7 @@ static void cas__cpu_affinity_routine(CasDialogConfig* dialog_config)
                 {
                     if (!lstrcmpW((LPCWSTR)entry.szExeFile, process))
                     {
-                        found = 1;
+                        found = TRUE;
                     }
 
                     if (found && !dialog_config->dones[i])
@@ -305,6 +372,190 @@ void cas_stop_timer(void)
     CancelWaitableTimer(global_cas.timer_handle);
 }
 
+// NOTE: https://github.com/winsiderss/systeminformer/blob/5d97d6b3f99bd7c651b448ae414f39150cf9af2f/SystemInformer/admintask.c#L22
+HRESULT cas_create_admin_task(void)
+{
+    HRESULT status = E_FAIL;
+    WCHAR* task_time_limit = L"PT0S";
+    VARIANT empty = { VT_EMPTY };
+    ITaskService* task_service = 0;
+    ITaskFolder* task_folder = 0;
+    ITaskDefinition* task_definition = 0;
+    ITaskSettings* task_settings = 0;
+    ITaskSettings2* task_settings2 = 0;
+    ITriggerCollection* task_trigger_collection = 0;
+    ITrigger* task_trigger = 0;
+    ILogonTrigger* task_logon_trigger = 0;
+    IRegisteredTask* task_registered_task = 0;
+    IPrincipal* task_principal = 0;
+    IActionCollection* task_action_collection = 0;
+    IAction* task_action = 0;
+    IExecAction* task_exec_action = 0;
+    WCHAR exe_path[MAX_PATH] = { 0 };
+    WCHAR domain_user_name[64] = { 0 };
+    PSID psid = { 0 };
+
+    GetModuleFileNameW(NULL, exe_path, ARRAY_COUNT(exe_path));
+
+    status = CoCreateInstance(&CLSID_TaskScheduler, 0, CLSCTX_INPROC_SERVER, &IID_ITaskService, (void**)&task_service);
+
+    if (FAILED(status))
+    {
+        CoUninitialize();
+        goto cleanup_exit;
+    }
+
+    status = ITaskService_Connect(task_service, empty, empty, empty, empty);
+
+    if (FAILED(status))
+        goto cleanup_exit;
+
+    status = ITaskService_GetFolder(task_service, L"\\", &task_folder);
+
+    if (FAILED(status))
+        goto cleanup_exit;
+
+    status = ITaskService_NewTask(task_service, 0, &task_definition);
+
+    if (FAILED(status))
+        goto cleanup_exit;
+
+    status = ITaskDefinition_get_Settings(task_definition, &task_settings);
+
+    if (FAILED(status))
+        goto cleanup_exit;
+
+    ITaskSettings_put_Compatibility(task_settings, TASK_COMPATIBILITY_V2_1);
+    ITaskSettings_put_StartWhenAvailable(task_settings, VARIANT_TRUE);
+    ITaskSettings_put_DisallowStartIfOnBatteries(task_settings, VARIANT_FALSE);
+    ITaskSettings_put_StopIfGoingOnBatteries(task_settings, VARIANT_FALSE);
+    ITaskSettings_put_ExecutionTimeLimit(task_settings, task_time_limit);
+    ITaskSettings_put_Priority(task_settings, 1);
+
+    if (SUCCEEDED(ITaskSettings_QueryInterface(task_settings, &IID_ITaskSettings2, &task_settings2)))
+    {
+        ITaskSettings2_put_UseUnifiedSchedulingEngine(task_settings2, VARIANT_TRUE);
+        ITaskSettings2_put_DisallowStartOnRemoteAppSession(task_settings2, VARIANT_TRUE);
+        ITaskSettings2_Release(task_settings2);
+    }
+
+    status = ITaskDefinition_get_Triggers(task_definition, &task_trigger_collection);
+
+    if (FAILED(status))
+        goto cleanup_exit;
+
+    status = ITriggerCollection_Create(task_trigger_collection, TASK_TRIGGER_LOGON, &task_trigger);
+
+    if (FAILED(status))
+        goto cleanup_exit;
+
+    status = ITrigger_QueryInterface(task_trigger, &IID_ILogonTrigger, &task_logon_trigger);
+
+    if (FAILED(status))
+        goto cleanup_exit;
+
+    ILogonTrigger_put_Id(task_logon_trigger, L"LogonTriggerId");
+
+    if (!cas__get_psid(&psid) || !cas__get_sid_full_name(psid, domain_user_name))
+        goto cleanup_exit;
+
+    ILogonTrigger_put_UserId(task_logon_trigger, domain_user_name);
+
+    status = ITaskDefinition_get_Principal(task_definition, &task_principal);
+
+    if (FAILED(status))
+        goto cleanup_exit;
+
+    IPrincipal_put_RunLevel(task_principal, TASK_RUNLEVEL_HIGHEST);
+    IPrincipal_put_LogonType(task_principal, TASK_LOGON_INTERACTIVE_TOKEN);
+
+    status = ITaskDefinition_get_Actions(task_definition, &task_action_collection);
+
+    if (FAILED(status))
+        goto cleanup_exit;
+
+    status = IActionCollection_Create(task_action_collection, TASK_ACTION_EXEC, &task_action);
+
+    if (FAILED(status))
+        goto cleanup_exit;
+
+    status = IAction_QueryInterface(task_action, &IID_IExecAction, &task_exec_action);
+
+    if (FAILED(status))
+        goto cleanup_exit;
+
+    status = IExecAction_put_Path(task_exec_action, exe_path);
+
+    if (FAILED(status))
+        goto cleanup_exit;
+
+    ITaskFolder_DeleteTask(task_folder, CAS_NAME, 0);
+
+    status = ITaskFolder_RegisterTaskDefinition(task_folder, CAS_NAME, task_definition,
+                                                TASK_CREATE_OR_UPDATE, empty, empty,
+                                                TASK_LOGON_INTERACTIVE_TOKEN, empty,
+                                                &task_registered_task);
+
+cleanup_exit:
+
+    if (task_registered_task)
+        IRegisteredTask_Release(task_registered_task);
+    if (task_action_collection)
+        IActionCollection_Release(task_action_collection);
+    if (task_principal)
+        IPrincipal_Release(task_principal);
+    if (task_logon_trigger)
+        ILogonTrigger_Release(task_logon_trigger);
+    if (task_trigger)
+        ITrigger_Release(task_trigger);
+    if (task_trigger_collection)
+        ITriggerCollection_Release(task_trigger_collection);
+    if (task_settings)
+        ITaskSettings_Release(task_settings);
+    if (task_definition)
+        ITaskDefinition_Release(task_definition);
+    if (task_folder)
+        ITaskFolder_Release(task_folder);
+    if (task_service)
+        ITaskService_Release(task_service);
+
+    return status;
+}
+
+HRESULT cas_delete_admin_task(void)
+{
+    HRESULT status = E_FAIL;
+    VARIANT empty = { VT_EMPTY };
+    ITaskService* task_service = 0;
+    ITaskFolder* task_folder = 0;
+
+    status = CoCreateInstance(&CLSID_TaskScheduler, 0, CLSCTX_INPROC_SERVER, &IID_ITaskService, (void**)&task_service);
+
+    if (FAILED(status))
+        goto cleanup_exit;
+
+    status = ITaskService_Connect(task_service, empty, empty, empty, empty);
+
+    if (FAILED(status))
+        goto cleanup_exit;
+
+    status = ITaskService_GetFolder(task_service, L"\\", &task_folder);
+
+    if (FAILED(status))
+        goto cleanup_exit;
+
+    status = ITaskFolder_DeleteTask(task_folder, CAS_NAME, 0);
+
+cleanup_exit:
+
+    if (task_folder)
+        ITaskFolder_Release(task_folder);
+    if (task_service)
+        ITaskService_Release(task_service);
+
+    return status;
+}
+
 #ifdef _DEBUG
 int WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR cmd_line, int n_show_cmd)
 {
@@ -346,8 +597,10 @@ void WinMainCRTStartup(void)
     PathRemoveFileSpecW(exe_path);
     PathCombineW(global_cas.ini_path, exe_path, CAS_INI);
 
+    CoInitializeEx(0, COINIT_MULTITHREADED);
+    CoInitializeSecurity(0, -1, 0, 0, RPC_C_AUTHN_LEVEL_PKT_PRIVACY, RPC_C_IMP_LEVEL_IMPERSONATE, 0, 0, 0);
+
     cas__create_shortcut_link();
-    cas__enable_debug_privilege();
     cas_dialog_init(&global_cas.dialog_config, global_cas.ini_path, global_cas.icon);
 
     for (;;)

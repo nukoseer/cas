@@ -14,19 +14,23 @@
 #include <shlobj.h>
 #include <roapi.h>
 #include <windowsx.h>
+#include <taskschd.h>
+#include <ntsecapi.h>
+#include <ntstatus.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
 #pragma warning(pop)
 
-#pragma comment (lib, "Kernel32")
-#pragma comment (lib, "User32")
-#pragma comment (lib, "Advapi32")
-#pragma comment (lib, "Gdi32")
-#pragma comment (lib, "Shlwapi")
-#pragma comment (lib, "Shell32")
-#pragma comment (lib, "Ole32")
-#pragma comment (lib, "RuntimeObject")
+#pragma comment (lib, "kernel32")
+#pragma comment (lib, "user32")
+#pragma comment (lib, "advapi32")
+#pragma comment (lib, "gdi32")
+#pragma comment (lib, "shlwapi")
+#pragma comment (lib, "shell32")
+#pragma comment (lib, "ole32")
+#pragma comment (lib, "runtimeobject")
+#pragma comment(lib, "taskschd.lib")
 
 #ifdef _DEBUG
 #define ASSERT(x) do { if (!(x)) { *(volatile int*)0; } } while (0)
@@ -38,6 +42,8 @@
 
 void cas_set_timer(int seconds);
 void cas_stop_timer(void);
+HRESULT cas_create_admin_task(void);
+HRESULT cas_delete_admin_task(void);
 
 #define H_CAS_H
 #endif

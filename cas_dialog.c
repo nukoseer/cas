@@ -11,8 +11,9 @@
 #define ITEM_HEIGHT  (14)
 #define PADDING      (4)
 
-#define ID_AUTO_START     (10)
-#define ID_PERIOD         (11)
+#define ID_PERIOD         (10)
+#define ID_SILENT_START   (11)
+#define ID_AUTO_START     (12)
 #define ID_PROCESS        (100)
 #define ID_AFFINITY_MASK  (200)
 #define ID_SET            (300)
@@ -36,6 +37,7 @@
 #define CAS_DIALOG_INI_PAIRS_SECTION    (L"pairs")
 #define CAS_DIALOG_INI_SETTINGS_SECTION (L"settings")
 
+#define CAS_DIALOG_INI_SILENT_START_KEY (L"silent-start")
 #define CAS_DIALOG_INI_AUTO_START_KEY   (L"auto-start")
 #define CAS_DIALOG_INI_PERIOD_KEY       (L"period")
 
@@ -95,10 +97,7 @@ static BOOL cas__is_elavated(void)
         {
             result = elevation.TokenIsElevated;
         }
-    }
 
-    if (token_handle)
-    {
         CloseHandle(token_handle);
     }
 
@@ -197,6 +196,9 @@ static void cas_dialog__set_values(HWND window, CasDialogConfig* dialog_config)
 
     HWND control = GetDlgItem(window, ID_VALUE_TYPE);
     ComboBox_SetCurSel(control, 0);
+
+    UINT silent_start = GetPrivateProfileIntW(CAS_DIALOG_INI_SETTINGS_SECTION, CAS_DIALOG_INI_SILENT_START_KEY, 0, global_ini_path);
+    CheckDlgButton(window, ID_SILENT_START, silent_start);
 
     UINT auto_start = GetPrivateProfileIntW(CAS_DIALOG_INI_SETTINGS_SECTION, CAS_DIALOG_INI_AUTO_START_KEY, 0, global_ini_path);
     CheckDlgButton(window, ID_AUTO_START, auto_start);
@@ -333,6 +335,11 @@ static LRESULT CALLBACK cas_dialog__proc(HWND window, UINT message, WPARAM wpara
             SetTimer(window, CAS_DIALOG_TIMER_HANDLE_ID, 1000, 0);
         }
 
+        if (!global_is_elavated)
+        {
+            EnableWindow(GetDlgItem(window, ID_AUTO_START), 0);
+        }
+
         SetForegroundWindow(window);
 		global_dialog_window = window;
 
@@ -440,10 +447,41 @@ static LRESULT CALLBACK cas_dialog__proc(HWND window, UINT message, WPARAM wpara
             }
 
         }
+        else if (control == ID_SILENT_START)
+        {
+            UINT checked = IsDlgButtonChecked(window, ID_SILENT_START);
+            WritePrivateProfileStringW(CAS_DIALOG_INI_SETTINGS_SECTION, CAS_DIALOG_INI_SILENT_START_KEY, checked ? L"1" : L"0", global_ini_path);
+        }
         else if (control == ID_AUTO_START)
         {
             UINT checked = IsDlgButtonChecked(window, ID_AUTO_START);
-            WritePrivateProfileStringW(CAS_DIALOG_INI_SETTINGS_SECTION, CAS_DIALOG_INI_AUTO_START_KEY, checked ? L"1" : L"0", global_ini_path);
+
+            if (checked)
+            {
+                if (S_OK != cas_create_admin_task())
+                {
+                    MessageBoxW(0, L"Failed to create auto task.", L"Warning!", MB_ICONWARNING);
+                    SendDlgItemMessageW(window, ID_AUTO_START, BM_SETCHECK, BST_UNCHECKED, 0);
+                    WritePrivateProfileStringW(CAS_DIALOG_INI_SETTINGS_SECTION, CAS_DIALOG_INI_AUTO_START_KEY, L"0", global_ini_path);
+                }
+                else
+                {
+                    WritePrivateProfileStringW(CAS_DIALOG_INI_SETTINGS_SECTION, CAS_DIALOG_INI_AUTO_START_KEY, L"1", global_ini_path);
+                }
+            }
+            else
+            {
+                if (S_OK != cas_delete_admin_task())
+                {
+                    MessageBoxW(0, L"Failed to delete auto task.", L"Warning!", MB_ICONWARNING);
+                    SendDlgItemMessageW(window, ID_AUTO_START, BM_SETCHECK, BST_CHECKED, 0);
+                    WritePrivateProfileStringW(CAS_DIALOG_INI_SETTINGS_SECTION, CAS_DIALOG_INI_AUTO_START_KEY, L"1", global_ini_path);
+                }
+                else
+                {
+                    WritePrivateProfileStringW(CAS_DIALOG_INI_SETTINGS_SECTION, CAS_DIALOG_INI_AUTO_START_KEY, L"0", global_ini_path);
+                }
+            }
         }
         else if (control == ID_PERIOD)
         {
@@ -776,7 +814,10 @@ LRESULT cas_dialog_show(CasDialogConfig* dialog_config)
              "cas%s", global_is_elavated ? "" : " (no administrator rights)");
     char* affinity_masks_caption[64] = { 0 };
     snprintf((char*)affinity_masks_caption, sizeof(affinity_masks_caption),
-             "Affinity Masks (Hex), Max: %X", (int)global_system_info.dwActiveProcessorMask);
+             "Affinity Masks (Hex) - Max: %X", (int)global_system_info.dwActiveProcessorMask);
+    char* auto_start[64] = { 0 };
+    snprintf((char*)auto_start, sizeof(auto_start),
+             "Auto-start%s", global_is_elavated ? "" : " (run as administrator)");
 
 	CasDialogLayout dialog_layout = (CasDialogLayout)
 	{
@@ -803,7 +844,8 @@ LRESULT cas_dialog_show(CasDialogConfig* dialog_config)
                 .items =
                 {
                     { "Period (sec)", ID_PERIOD,     ITEM_NUMBER | ITEM_LABEL, 48 },
-                    { "Auto-start",   ID_AUTO_START, ITEM_CHECKBOX },
+                    { "Silent-start", ID_SILENT_START, ITEM_CHECKBOX },
+                    { (const char*)auto_start,   ID_AUTO_START, ITEM_CHECKBOX },
                     { NULL },
                 },
 			},
@@ -841,7 +883,7 @@ LRESULT cas_dialog_show(CasDialogConfig* dialog_config)
 
 void cas_dialog_init(CasDialogConfig* dialog_config, WCHAR* ini_path, HICON icon)
 {
-    UINT auto_start = GetPrivateProfileIntW(CAS_DIALOG_INI_SETTINGS_SECTION, CAS_DIALOG_INI_AUTO_START_KEY, 0, ini_path);
+    UINT silent_start = GetPrivateProfileIntW(CAS_DIALOG_INI_SETTINGS_SECTION, CAS_DIALOG_INI_SILENT_START_KEY, 0, ini_path);
 
     global_ini_path = ini_path;
     global_icon = icon;
@@ -849,7 +891,7 @@ void cas_dialog_init(CasDialogConfig* dialog_config, WCHAR* ini_path, HICON icon
 
     GetSystemInfo(&global_system_info);
 
-    if (auto_start)
+    if (silent_start)
     {
         UINT period = GetPrivateProfileIntW(CAS_DIALOG_INI_SETTINGS_SECTION, CAS_DIALOG_INI_PERIOD_KEY, 5, ini_path);
 

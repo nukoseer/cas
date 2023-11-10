@@ -12,7 +12,7 @@ rem /wd4774 /wd4062 /wd4201
 
 set debug_linker_flags=/debug
 set release_linker_flags=/fixed /opt:icf /opt:ref libvcruntime.lib ucrt.lib
-set common_linker_flags=/incremental:no /SUBSYSTEM:WINDOWS /MANIFEST:EMBED /MANIFESTINPUT:..\cas.manifest /merge:_RDATA=.rdata
+set common_linker_flags=/incremental:no /SUBSYSTEM:WINDOWS /merge:_RDATA=.rdata
 
 set debug=yes
 set compiler=cl
@@ -27,5 +27,7 @@ if %debug%==yes (
 
 rc.exe /nologo ..\cas.rc
 %compiler% %common_compiler_flags% ..\cas.c ..\cas_dialog.c /link ..\cas.res %common_linker_flags% /out:cas.exe
+
+mt -nologo -manifest ..\cas.manifest -outputresource:cas.exe;1
 
 popd
