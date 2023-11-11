@@ -2,11 +2,11 @@
 
 # cas
 
-Simple utility for setting CPU affinity of processes for Windows.
+Simple utility for setting CPU affinity for Windows.
 
-You can get latest build as zip archive here: [cas.zip](https://raw.githubusercontent.com/wiki/nukoseer/cas/cas.zip)
+You can get the latest build as a zip archive here: [cas.zip](https://raw.githubusercontent.com/wiki/nukoseer/cas/cas.zip)
 
-_Note: It is recommended to run cas as an administrator because some processes may require administrator rights for setting affinity._
+_Note: It is recommended to run cas.exe as an administrator, some processes may require administrator rights for setting affinity._
 
 # Usage
 
@@ -16,10 +16,11 @@ cas takes process name and affinity mask pairs as input from the user. It period
 
 - Processes (List of process names to query - every process needs matching affinity mask)
 - Affinity Masks (List of affinity masks to set for given process - affinity mask should be given in hex format)
-- Done (Indicator to see if desired affinity masks is set)
+- Done (Indicator to see if desired affinity mask is set)
 - Settings (Program options)
   - Period: Query period in seconds [1-99]
-  - Auto-start: Start querying automatically next time when you open cas
+  - Silent-start: Start querying automatically next time when you run cas.exe
+  - Auto-start: Run cas.exe automatically at startup (administrator rights needed)
 - Convert (Affinity mask converter between bit and hex representation)
   - Value Type: Value type that you want to convert from (Bit or Hex)
   - Value: Value that you want to convert
@@ -29,7 +30,7 @@ cas takes process name and affinity mask pairs as input from the user. It period
 - Cancel (Change to tray mode)
 - Tray Menu (Right-click to tray icon)
   - cas: Redirects to this page.
-  - Exit:  Quit cas.
+  - Exit: Quit cas.
 
 # Media
 
