@@ -204,21 +204,18 @@ static void cas__cpu_affinity_routine(CasDialogConfig* dialog_config)
                 {
                     if (!lstrcmpW((LPCWSTR)entry.szExeFile, process))
                     {
-                        found = TRUE;
-                    }
-
-                    if (found && !dialog_config->dones[i])
-                    {
                         UINT affinity_mask = dialog_config->affinity_masks[i];
                         dialog_config->dones[i] = cas__set_cpu_affinity(&entry, affinity_mask);
+                        found = TRUE;
                     }
                 } while (Process32NextW(snapshot, &entry));
-
-                if (!found)
-                {
-                    dialog_config->dones[i] = 0;
-                }
             }
+            
+            if (!found)
+            {
+                dialog_config->dones[i] = 0;
+            }
+
             CloseHandle(snapshot);
         }
         else
