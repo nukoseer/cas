@@ -332,6 +332,8 @@ static LRESULT CALLBACK cas_dialog__proc(HWND window, UINT message, WPARAM wpara
                 EnableWindow(GetDlgItem(window, ID_AFFINITY_MASK + i), 0);
             }
 
+            EnableWindow(GetDlgItem(window, ID_PERIOD), 0);
+            
             SetTimer(window, CAS_DIALOG_TIMER_HANDLE_ID, 1000, 0);
         }
 
@@ -373,6 +375,7 @@ static LRESULT CALLBACK cas_dialog__proc(HWND window, UINT message, WPARAM wpara
                         EnableWindow(GetDlgItem(window, ID_PROCESS + i), 0);
                         EnableWindow(GetDlgItem(window, ID_AFFINITY_MASK + i), 0);
                     }
+                    EnableWindow(GetDlgItem(window, ID_PERIOD), 0);
 
                     UINT period = GetPrivateProfileIntW(CAS_DIALOG_INI_SETTINGS_SECTION, CAS_DIALOG_INI_PERIOD_KEY, 5, global_ini_path);
                     cas_set_timer(period);
@@ -398,6 +401,7 @@ static LRESULT CALLBACK cas_dialog__proc(HWND window, UINT message, WPARAM wpara
                     SetDlgItemTextW(window, ID_SET + i, L"");
                     dialog_config->dones[i] = 0;
                 }
+                EnableWindow(GetDlgItem(window, ID_PERIOD), 1);
 
                 cas_stop_timer();
 
@@ -406,6 +410,7 @@ static LRESULT CALLBACK cas_dialog__proc(HWND window, UINT message, WPARAM wpara
         }
         else if (control == ID_CANCEL)
         {
+            KillTimer(window, CAS_DIALOG_TIMER_HANDLE_ID);
             EndDialog(window, 0);
             return FALSE;
         }
