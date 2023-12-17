@@ -44,6 +44,8 @@ void cas_set_timer(int seconds);
 void cas_stop_timer(void);
 HRESULT cas_create_admin_task(void);
 HRESULT cas_delete_admin_task(void);
+void cas_disable_hotkeys(void);
+BOOL cas_enable_hotkeys(void);
 
 #define H_CAS_H
 #endif

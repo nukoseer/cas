@@ -19,6 +19,7 @@ cas takes process name and affinity mask pairs as input from the user. It period
 - Done (Indicator to see if desired affinity mask is set)
 - Settings (Program options)
   - Period: Query period in seconds [1-99]
+  - Menu Shortcut: Set shortcut to open/close cas menu
   - Silent-start: Start querying automatically next time when you run cas.exe
   - Auto-start: Run cas.exe automatically at startup (administrator rights needed)
 - Convert (Affinity mask converter between bit and hex representation)

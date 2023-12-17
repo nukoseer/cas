@@ -6,7 +6,7 @@
 #define COL_WIDTH    (150)
 #define COL2_WIDTH   (26)
 #define ROW_HEIGHT   ((MAX_ITEMS + 1) * ITEM_HEIGHT)
-#define ROW2_HEIGHT  ((3 + 1) * ITEM_HEIGHT)
+#define ROW2_HEIGHT  ((4 + 1) * ITEM_HEIGHT)
 #define BUTTON_WIDTH (50)
 #define ITEM_HEIGHT  (14)
 #define PADDING      (4)
@@ -20,6 +20,7 @@
 #define ID_VALUE_TYPE     (400)
 #define ID_VALUE          (500)
 #define ID_RESULT         (600)
+#define ID_SHORTCUT_MENU  (700)
 
 #define ITEM_CHECKBOX     (1 << 0)
 #define ITEM_NUMBER       (1 << 1)
@@ -28,18 +29,20 @@
 #define ITEM_LABEL        (1 << 4)
 #define ITEM_COMBOBOX     (1 << 5)
 #define ITEM_CENTER       (1 << 6)
+#define ITEM_HOTKEY       (1 << 7)
 
 #define CONTROL_BUTTON    (0x0080)
 #define CONTROL_EDIT      (0x0081)
 #define CONTROL_STATIC    (0x0082)
 #define CONTROL_COMBOBOX  (0x0085)
 
-#define CAS_DIALOG_INI_PAIRS_SECTION    (L"pairs")
-#define CAS_DIALOG_INI_SETTINGS_SECTION (L"settings")
+#define CAS_DIALOG_INI_PAIRS_SECTION     (L"pairs")
+#define CAS_DIALOG_INI_SETTINGS_SECTION  (L"settings")
 
-#define CAS_DIALOG_INI_SILENT_START_KEY (L"silent-start")
-#define CAS_DIALOG_INI_AUTO_START_KEY   (L"auto-start")
-#define CAS_DIALOG_INI_PERIOD_KEY       (L"period")
+#define CAS_DIALOG_INI_SILENT_START_KEY  (L"silent-start")
+#define CAS_DIALOG_INI_AUTO_START_KEY    (L"auto-start")
+#define CAS_DIALOG_INI_PERIOD_KEY        (L"period")
+#define CAS_DIALOG_INI_SHORTCUT_MENU_KEY (L"menu-shortcut")
 
 #define CAS_DIALOG_TIMER_HANDLE_ID      (1)
 
@@ -82,6 +85,11 @@ static HICON global_icon;
 static int global_started;
 static int global_value_type;
 static const char global_check_mark[] = "\x20\x00\x20\x00\x20\x00\x20\x00\x13\x27\x00\x00"; // NOTE: Four space and check mark for easy printing.
+struct {
+	WNDPROC window_proc;
+    CasDialogConfig* dialog_config;
+	int control;
+} static global_config_shortcut;
 
 static BOOL cas__is_elavated(void)
 {
@@ -102,6 +110,34 @@ static BOOL cas__is_elavated(void)
     }
 
     return result;
+}
+
+static void cas_dialog__format_key(DWORD key_mod, WCHAR* text)
+{
+	if (key_mod == 0)
+	{
+		StrCpyW(text, L"[none]");
+		return;
+	}
+
+	DWORD mod = HOT_GET_MOD(key_mod);
+
+	text[0] = 0;
+
+	if (mod & MOD_CONTROL) StrCatW(text, L"Ctrl + ");
+	if (mod & MOD_WIN)     StrCatW(text, L"Win + ");
+	if (mod & MOD_ALT)     StrCatW(text, L"Alt + ");
+	if (mod & MOD_SHIFT)   StrCatW(text, L"Shift + ");
+
+	WCHAR key_text[32];
+	UINT scan_code = MapVirtualKeyW(HOT_GET_KEY(key_mod), MAPVK_VK_TO_VSC);
+
+	if (GetKeyNameTextW(scan_code << 16, key_text, ARRAY_COUNT(key_text)) == 0)
+	{
+		_snwprintf(key_text, ARRAY_COUNT(key_text), L"[0x%02x]", (unsigned int)HOT_GET_KEY(key_mod));
+	}
+
+	StrCatW(text, key_text);
 }
 
 static int cas_dialog__validate_bits(const WCHAR* bits, int length, const WCHAR** wrong_bit)
@@ -205,6 +241,22 @@ static void cas_dialog__set_values(HWND window, CasDialogConfig* dialog_config)
 
     UINT period = GetPrivateProfileIntW(CAS_DIALOG_INI_SETTINGS_SECTION, CAS_DIALOG_INI_PERIOD_KEY, 5, global_ini_path);
     SetDlgItemInt(window, ID_PERIOD, period, FALSE);
+
+    WCHAR text[64] = { 0 };
+    UINT menu_shortcut = GetPrivateProfileIntW(CAS_DIALOG_INI_SETTINGS_SECTION, CAS_DIALOG_INI_SHORTCUT_MENU_KEY, 0, global_ini_path);
+
+    if (menu_shortcut)
+    {
+        dialog_config->menu_shortcut = menu_shortcut;
+        cas_dialog__format_key(dialog_config->menu_shortcut, text);
+        SetDlgItemTextW(window, ID_SHORTCUT_MENU, text);
+        SetWindowLongW(GetDlgItem(window, ID_SHORTCUT_MENU), GWLP_USERDATA, dialog_config->menu_shortcut);
+    }
+    else
+    {
+        _snwprintf(text, ARRAY_COUNT(text), L"No shortcut");
+        SetDlgItemTextW(window, ID_SHORTCUT_MENU, text);
+    }
 }
 
 static void cas_dialog__convert_value(HWND window)
@@ -310,6 +362,81 @@ static void cas_dialog__config_save(HWND window)
     }
 }
 
+static void cas_dialog__shortcut_save(HWND window, CasDialogConfig* dialog_config)
+{
+	WCHAR text[64];
+
+    dialog_config->menu_shortcut = GetWindowLongW(GetDlgItem(window, ID_SHORTCUT_MENU), GWLP_USERDATA);
+   _snwprintf(text, ARRAY_COUNT(text), L"%u", (unsigned int)dialog_config->menu_shortcut);
+    WritePrivateProfileStringW(CAS_DIALOG_INI_SETTINGS_SECTION, CAS_DIALOG_INI_SHORTCUT_MENU_KEY, text, global_ini_path);
+}
+
+static LRESULT CALLBACK cas_dialog__shortcut_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
+{
+	if (message == WM_GETDLGCODE)
+	{
+		return DLGC_WANTALLKEYS;
+	}
+
+	if (message == WM_KEYDOWN || message == WM_SYSKEYDOWN)
+	{
+		return TRUE;
+	}
+
+	if (message == WM_KEYUP || message == WM_SYSKEYUP)
+	{
+		if (wparam != VK_LCONTROL &&  wparam != VK_RCONTROL && wparam != VK_CONTROL &&
+			wparam != VK_LSHIFT && wparam != VK_RSHIFT && wparam != VK_SHIFT &&
+			wparam != VK_LMENU && wparam != VK_RMENU && wparam != VK_MENU &&
+			wparam != VK_LWIN && wparam != VK_RWIN)
+		{
+			DWORD shortcut;
+
+			if (wparam == VK_ESCAPE)
+			{
+				shortcut = GetWindowLongW(window, GWLP_USERDATA);
+			}
+			else if (wparam == VK_BACK)
+			{
+				shortcut = 0;
+			}
+			else
+			{
+				DWORD virtual_key = (DWORD)wparam;
+				DWORD mods = 0
+					| ((GetKeyState(VK_CONTROL) >> 15) ? MOD_CONTROL : 0)
+					| ((GetKeyState(VK_LWIN) >> 15)    ? MOD_WIN     : 0)
+					| ((GetKeyState(VK_RWIN) >> 15)    ? MOD_WIN     : 0)
+					| ((GetKeyState(VK_MENU) >> 15)    ? MOD_ALT     : 0)
+					| ((GetKeyState(VK_SHIFT) >> 15)   ? MOD_SHIFT   : 0);
+
+				shortcut = HOT_KEY(virtual_key, mods);
+			}
+
+			WCHAR text[64];
+			cas_dialog__format_key(shortcut, text);
+			SetDlgItemTextW(global_dialog_window, global_config_shortcut.control, text);
+			SetWindowLongW(window, GWLP_USERDATA, shortcut);
+
+			SetWindowLongPtrW(window, GWLP_WNDPROC, (LONG_PTR)global_config_shortcut.window_proc);
+			global_config_shortcut.control = 0;
+
+            cas_dialog__shortcut_save(global_dialog_window, global_config_shortcut.dialog_config);
+			cas_enable_hotkeys();
+
+            return FALSE;
+		}
+	}
+
+	return global_config_shortcut.window_proc(window, message, wparam, lparam);
+}
+
+static void cas_dialog__end(HWND window)
+{
+    KillTimer(window, CAS_DIALOG_TIMER_HANDLE_ID);
+    EndDialog(window, 0);
+}
+
 static LRESULT CALLBACK cas_dialog__proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
 {
     if (message == WM_INITDIALOG)
@@ -333,7 +460,7 @@ static LRESULT CALLBACK cas_dialog__proc(HWND window, UINT message, WPARAM wpara
             }
 
             EnableWindow(GetDlgItem(window, ID_PERIOD), 0);
-            
+
             SetTimer(window, CAS_DIALOG_TIMER_HANDLE_ID, 1000, 0);
         }
 
@@ -342,8 +469,11 @@ static LRESULT CALLBACK cas_dialog__proc(HWND window, UINT message, WPARAM wpara
             EnableWindow(GetDlgItem(window, ID_AUTO_START), 0);
         }
 
+        SendMessageW(window, WM_NEXTDLGCTL, (WPARAM)GetDlgItem(window, ID_START), TRUE);
+        
         SetForegroundWindow(window);
 		global_dialog_window = window;
+        global_config_shortcut.control = 0;
 
 		return TRUE;
     }
@@ -410,8 +540,7 @@ static LRESULT CALLBACK cas_dialog__proc(HWND window, UINT message, WPARAM wpara
         }
         else if (control == ID_CANCEL)
         {
-            KillTimer(window, CAS_DIALOG_TIMER_HANDLE_ID);
-            EndDialog(window, 0);
+            cas_dialog__end(window);
             return FALSE;
         }
         else if (control == ID_VALUE_TYPE && HIWORD(wparam) == CBN_SELCHANGE)
@@ -503,6 +632,23 @@ static LRESULT CALLBACK cas_dialog__proc(HWND window, UINT message, WPARAM wpara
             _snwprintf(period_string, ARRAY_COUNT(period_string), L"%u", period);
             WritePrivateProfileStringW(CAS_DIALOG_INI_SETTINGS_SECTION, CAS_DIALOG_INI_PERIOD_KEY, period_string, global_ini_path);
         }
+        else if (control == ID_SHORTCUT_MENU && HIWORD(wparam) == BN_CLICKED)
+		{
+			if (global_config_shortcut.control == 0)
+			{
+                CasDialogConfig* dialog_config = (CasDialogConfig*)GetWindowLongPtrW(window, GWLP_USERDATA);
+
+				SetDlgItemTextW(window, control, L"Press new shortcut");
+
+				global_config_shortcut.control = control;
+				global_config_shortcut.dialog_config = dialog_config;
+
+				HWND control_window = GetDlgItem(window, control);
+				global_config_shortcut.window_proc = (WNDPROC)GetWindowLongPtrW(control_window, GWLP_WNDPROC);
+				SetWindowLongPtrW(control_window, GWLP_WNDPROC, (LONG_PTR)&cas_dialog__shortcut_proc);
+				cas_disable_hotkeys();
+			}
+		}
 
         return TRUE;
     }
@@ -654,6 +800,8 @@ static void cas__do_dialog_layout(const CasDialogLayout* dialog_layout, BYTE* bu
             int has_combobox = !!(item->item & ITEM_COMBOBOX);
             int has_checkbox = !!(item->item & ITEM_CHECKBOX);
             int has_center = !!(item->item & ITEM_COMBOBOX);
+            int has_hotkey = !!(item->item & ITEM_HOTKEY);
+
 
 			int item_x = x;
 			int item_w = w;
@@ -708,6 +856,12 @@ static void cas__do_dialog_layout(const CasDialogLayout* dialog_layout, BYTE* bu
 			if (has_number)
 			{
 				buffer = cas__do_dialog_item(buffer, "", (WORD)item_id, (WORD)CONTROL_EDIT, WS_TABSTOP | WS_BORDER | ES_NUMBER, item_x, y, item_w, ITEM_HEIGHT);
+				item_count++;
+			}
+
+            if (has_hotkey)
+			{
+				buffer = cas__do_dialog_item(buffer, "", (WORD)item_id, (WORD)CONTROL_BUTTON, WS_TABSTOP, item_x, y, item_w, ITEM_HEIGHT);
 				item_count++;
 			}
 
@@ -810,7 +964,7 @@ LRESULT cas_dialog_show(CasDialogConfig* dialog_config)
 {
 	if (global_dialog_window)
 	{
-		SetForegroundWindow(global_dialog_window);
+        cas_dialog__end(global_dialog_window);
 		return FALSE;
 	}
 
@@ -849,6 +1003,7 @@ LRESULT cas_dialog_show(CasDialogConfig* dialog_config)
                 .items =
                 {
                     { "Period (sec)", ID_PERIOD,     ITEM_NUMBER | ITEM_LABEL, 48 },
+                    { "Menu Shortcut", ID_SHORTCUT_MENU, ITEM_HOTKEY | ITEM_LABEL, 48 },
                     { "Silent-start", ID_SILENT_START, ITEM_CHECKBOX },
                     { (const char*)auto_start,   ID_AUTO_START, ITEM_CHECKBOX },
                     { NULL },
@@ -895,6 +1050,10 @@ void cas_dialog_init(CasDialogConfig* dialog_config, WCHAR* ini_path, HICON icon
     global_is_elavated = cas__is_elavated();
 
     GetSystemInfo(&global_system_info);
+
+    UINT menu_shortcut = GetPrivateProfileIntW(CAS_DIALOG_INI_SETTINGS_SECTION, CAS_DIALOG_INI_SHORTCUT_MENU_KEY, 0, global_ini_path);
+    dialog_config->menu_shortcut = menu_shortcut;
+    cas_enable_hotkeys();
 
     if (silent_start)
     {

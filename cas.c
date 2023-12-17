@@ -9,6 +9,7 @@
 #define WM_CAS_ALREADY_RUNNING    (WM_USER + 1)
 #define CMD_CAS                   (1)
 #define CMD_QUIT                  (2)
+#define HOT_MENU                  (13)
 
 #define SECONDS_TO_MILLISECONDS   (1000)
 
@@ -327,6 +328,13 @@ static LRESULT CALLBACK cas__window_proc(HWND window_handle, UINT message, WPARA
 
         return 0;
     }
+    else if (message == WM_HOTKEY)
+	{
+        if (wparam == HOT_MENU)
+        {
+            cas_dialog_show(&global_cas.dialog_config);
+        }
+    }
 
     return DefWindowProcW(window_handle, message, wparam, lparam);
 }
@@ -551,6 +559,23 @@ cleanup_exit:
         ITaskService_Release(task_service);
 
     return status;
+}
+
+void cas_disable_hotkeys(void)
+{
+	UnregisterHotKey(global_cas.window_handle, HOT_MENU);
+}
+
+BOOL cas_enable_hotkeys(void)
+{
+	BOOL success = TRUE;
+    
+	if (global_cas.dialog_config.menu_shortcut)
+	{
+		success = success && RegisterHotKey(global_cas.window_handle, HOT_MENU, HOT_GET_MOD(global_cas.dialog_config.menu_shortcut), HOT_GET_KEY(global_cas.dialog_config.menu_shortcut));
+	}
+
+	return success;
 }
 
 #ifdef _DEBUG
