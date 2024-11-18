@@ -260,7 +260,18 @@ static void cas__add_tray_icon(HWND window_handle)
         .hIcon = global_cas.icon,
     };
     StrCpyNW(data.szInfoTitle, CAS_NAME, ARRAY_COUNT(data.szInfoTitle));
-    Shell_NotifyIconW(NIM_ADD, &data);
+
+    unsigned int max_retries = 5;
+
+    for (unsigned int i = 0; i < max_retries; ++i)
+    {
+        if (Shell_NotifyIconW(NIM_ADD, &data) == TRUE)
+        {
+            break;
+        }
+
+        Sleep(200);
+    }
 }
 
 static void cas__remove_tray_icon(HWND window_handle)
