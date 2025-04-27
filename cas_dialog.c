@@ -48,32 +48,32 @@
 
 typedef struct
 {
-	int left;
-	int top;
-	int width;
-	int height;
+    int left;
+    int top;
+    int width;
+    int height;
 } CasDialogRect;
 
 typedef struct
 {
-	const char* text;
-	WORD id;
-	WORD item;
-	DWORD width;
+    const char* text;
+    WORD id;
+    WORD item;
+    DWORD width;
 } CasDialogItem;
 
 typedef struct
 {
-	const char* caption;
-	CasDialogRect rect;
-	CasDialogItem items[MAX_ITEMS];
+    const char* caption;
+    CasDialogRect rect;
+    CasDialogItem items[MAX_ITEMS];
 } CasDialogGroup;
 
 typedef struct
 {
-	CasDialogGroup* groups;
+    CasDialogGroup* groups;
     const char* title;
-	const char* font;
+    const char* font;
     WORD font_size;
 } CasDialogLayout;
 
@@ -86,9 +86,9 @@ static int global_started;
 static int global_value_type;
 static const char global_check_mark[] = "\x20\x00\x20\x00\x20\x00\x20\x00\x13\x27\x00\x00"; // NOTE: Four space and check mark for easy printing.
 struct {
-	WNDPROC window_proc;
+    WNDPROC window_proc;
     CasDialogConfig* dialog_config;
-	int control;
+    int control;
 } static global_config_shortcut;
 
 static BOOL cas__is_elavated(void)
@@ -114,30 +114,30 @@ static BOOL cas__is_elavated(void)
 
 static void cas_dialog__format_key(DWORD key_mod, WCHAR* text)
 {
-	if (key_mod == 0)
-	{
-		StrCpyW(text, L"[none]");
-		return;
-	}
+    if (key_mod == 0)
+    {
+	StrCpyW(text, L"[none]");
+	return;
+    }
 
-	DWORD mod = HOT_GET_MOD(key_mod);
+    DWORD mod = HOT_GET_MOD(key_mod);
 
-	text[0] = 0;
+    text[0] = 0;
 
-	if (mod & MOD_CONTROL) StrCatW(text, L"Ctrl + ");
-	if (mod & MOD_WIN)     StrCatW(text, L"Win + ");
-	if (mod & MOD_ALT)     StrCatW(text, L"Alt + ");
-	if (mod & MOD_SHIFT)   StrCatW(text, L"Shift + ");
+    if (mod & MOD_CONTROL) StrCatW(text, L"Ctrl + ");
+    if (mod & MOD_WIN)     StrCatW(text, L"Win + ");
+    if (mod & MOD_ALT)     StrCatW(text, L"Alt + ");
+    if (mod & MOD_SHIFT)   StrCatW(text, L"Shift + ");
 
-	WCHAR key_text[32];
-	UINT scan_code = MapVirtualKeyW(HOT_GET_KEY(key_mod), MAPVK_VK_TO_VSC);
+    WCHAR key_text[32];
+    UINT scan_code = MapVirtualKeyW(HOT_GET_KEY(key_mod), MAPVK_VK_TO_VSC);
 
-	if (GetKeyNameTextW(scan_code << 16, key_text, ARRAY_COUNT(key_text)) == 0)
-	{
-		_snwprintf(key_text, ARRAY_COUNT(key_text), L"[0x%02x]", (unsigned int)HOT_GET_KEY(key_mod));
-	}
+    if (GetKeyNameTextW(scan_code << 16, key_text, ARRAY_COUNT(key_text)) == 0)
+    {
+	_snwprintf(key_text, ARRAY_COUNT(key_text), L"[0x%02x]", (unsigned int)HOT_GET_KEY(key_mod));
+    }
 
-	StrCatW(text, key_text);
+    StrCatW(text, key_text);
 }
 
 static int cas_dialog__validate_bits(const WCHAR* bits, int length, const WCHAR** wrong_bit)
@@ -298,7 +298,7 @@ static void cas_dialog__convert_value(HWND window)
                 SendDlgItemMessageW(window, ID_VALUE, EM_SETSEL, (WPARAM)value_length - 1, (LPARAM)value_length - 1);
             }
         }
-        // NOTE: Hex value
+            // NOTE: Hex value
         else if (global_value_type == 1)
         {
             WCHAR* wrong_hex = 0;
@@ -364,71 +364,71 @@ static void cas_dialog__config_save(HWND window)
 
 static void cas_dialog__shortcut_save(HWND window, CasDialogConfig* dialog_config)
 {
-	WCHAR text[64];
+    WCHAR text[64];
 
     dialog_config->menu_shortcut = GetWindowLongW(GetDlgItem(window, ID_SHORTCUT_MENU), GWLP_USERDATA);
-   _snwprintf(text, ARRAY_COUNT(text), L"%u", (unsigned int)dialog_config->menu_shortcut);
+    _snwprintf(text, ARRAY_COUNT(text), L"%u", (unsigned int)dialog_config->menu_shortcut);
     WritePrivateProfileStringW(CAS_DIALOG_INI_SETTINGS_SECTION, CAS_DIALOG_INI_SHORTCUT_MENU_KEY, text, global_ini_path);
 }
 
 static LRESULT CALLBACK cas_dialog__shortcut_proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
 {
-	if (message == WM_GETDLGCODE)
+    if (message == WM_GETDLGCODE)
+    {
+	return DLGC_WANTALLKEYS;
+    }
+
+    if (message == WM_KEYDOWN || message == WM_SYSKEYDOWN)
+    {
+	return TRUE;
+    }
+
+    if (message == WM_KEYUP || message == WM_SYSKEYUP)
+    {
+	if (wparam != VK_LCONTROL &&  wparam != VK_RCONTROL && wparam != VK_CONTROL &&
+	    wparam != VK_LSHIFT && wparam != VK_RSHIFT && wparam != VK_SHIFT &&
+	    wparam != VK_LMENU && wparam != VK_RMENU && wparam != VK_MENU &&
+	    wparam != VK_LWIN && wparam != VK_RWIN)
 	{
-		return DLGC_WANTALLKEYS;
-	}
+	    DWORD shortcut;
 
-	if (message == WM_KEYDOWN || message == WM_SYSKEYDOWN)
-	{
-		return TRUE;
-	}
+	    if (wparam == VK_ESCAPE)
+	    {
+		shortcut = GetWindowLongW(window, GWLP_USERDATA);
+	    }
+	    else if (wparam == VK_BACK)
+	    {
+		shortcut = 0;
+	    }
+	    else
+	    {
+		DWORD virtual_key = (DWORD)wparam;
+		DWORD mods = 0
+		    | ((GetKeyState(VK_CONTROL) >> 15) ? MOD_CONTROL : 0)
+		    | ((GetKeyState(VK_LWIN) >> 15)    ? MOD_WIN     : 0)
+		    | ((GetKeyState(VK_RWIN) >> 15)    ? MOD_WIN     : 0)
+		    | ((GetKeyState(VK_MENU) >> 15)    ? MOD_ALT     : 0)
+		    | ((GetKeyState(VK_SHIFT) >> 15)   ? MOD_SHIFT   : 0);
 
-	if (message == WM_KEYUP || message == WM_SYSKEYUP)
-	{
-		if (wparam != VK_LCONTROL &&  wparam != VK_RCONTROL && wparam != VK_CONTROL &&
-			wparam != VK_LSHIFT && wparam != VK_RSHIFT && wparam != VK_SHIFT &&
-			wparam != VK_LMENU && wparam != VK_RMENU && wparam != VK_MENU &&
-			wparam != VK_LWIN && wparam != VK_RWIN)
-		{
-			DWORD shortcut;
+		shortcut = HOT_KEY(virtual_key, mods);
+	    }
 
-			if (wparam == VK_ESCAPE)
-			{
-				shortcut = GetWindowLongW(window, GWLP_USERDATA);
-			}
-			else if (wparam == VK_BACK)
-			{
-				shortcut = 0;
-			}
-			else
-			{
-				DWORD virtual_key = (DWORD)wparam;
-				DWORD mods = 0
-					| ((GetKeyState(VK_CONTROL) >> 15) ? MOD_CONTROL : 0)
-					| ((GetKeyState(VK_LWIN) >> 15)    ? MOD_WIN     : 0)
-					| ((GetKeyState(VK_RWIN) >> 15)    ? MOD_WIN     : 0)
-					| ((GetKeyState(VK_MENU) >> 15)    ? MOD_ALT     : 0)
-					| ((GetKeyState(VK_SHIFT) >> 15)   ? MOD_SHIFT   : 0);
+	    WCHAR text[64];
+	    cas_dialog__format_key(shortcut, text);
+	    SetDlgItemTextW(global_dialog_window, global_config_shortcut.control, text);
+	    SetWindowLongW(window, GWLP_USERDATA, shortcut);
 
-				shortcut = HOT_KEY(virtual_key, mods);
-			}
-
-			WCHAR text[64];
-			cas_dialog__format_key(shortcut, text);
-			SetDlgItemTextW(global_dialog_window, global_config_shortcut.control, text);
-			SetWindowLongW(window, GWLP_USERDATA, shortcut);
-
-			SetWindowLongPtrW(window, GWLP_WNDPROC, (LONG_PTR)global_config_shortcut.window_proc);
-			global_config_shortcut.control = 0;
+	    SetWindowLongPtrW(window, GWLP_WNDPROC, (LONG_PTR)global_config_shortcut.window_proc);
+	    global_config_shortcut.control = 0;
 
             cas_dialog__shortcut_save(global_dialog_window, global_config_shortcut.dialog_config);
-			cas_enable_hotkeys();
+	    cas_enable_hotkeys();
 
             return FALSE;
-		}
 	}
+    }
 
-	return global_config_shortcut.window_proc(window, message, wparam, lparam);
+    return global_config_shortcut.window_proc(window, message, wparam, lparam);
 }
 
 static void cas_dialog__end(HWND window)
@@ -440,14 +440,14 @@ static void cas_dialog__end(HWND window)
 static LRESULT CALLBACK cas_dialog__proc(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
 {
     if (message == WM_INITDIALOG)
-	{
+    {
         CasDialogConfig* dialog_config = (CasDialogConfig*)lparam;
 
         SetWindowLongPtrW(window, GWLP_USERDATA, (LONG_PTR)dialog_config);
 
         SendMessage(window, WM_SETICON, ICON_BIG, (LPARAM)global_icon);
         SendDlgItemMessageW(window, ID_VALUE_TYPE, CB_ADDSTRING, 0, (LPARAM)L"Bit");
-		SendDlgItemMessageW(window, ID_VALUE_TYPE, CB_ADDSTRING, 0, (LPARAM)L"Hex");
+	SendDlgItemMessageW(window, ID_VALUE_TYPE, CB_ADDSTRING, 0, (LPARAM)L"Hex");
 
         cas_dialog__set_values(window, dialog_config);
 
@@ -472,10 +472,10 @@ static LRESULT CALLBACK cas_dialog__proc(HWND window, UINT message, WPARAM wpara
         SendMessageW(window, WM_NEXTDLGCTL, (WPARAM)GetDlgItem(window, ID_START), TRUE);
         
         SetForegroundWindow(window);
-		global_dialog_window = window;
+	global_dialog_window = window;
         global_config_shortcut.control = 0;
 
-		return TRUE;
+	return TRUE;
     }
     else if (message == WM_DESTROY)
     {
@@ -483,10 +483,10 @@ static LRESULT CALLBACK cas_dialog__proc(HWND window, UINT message, WPARAM wpara
         KillTimer(window, CAS_DIALOG_TIMER_HANDLE_ID);
     }
     else if (message == WM_COMMAND)
-	{
+    {
         int control = LOWORD(wparam);
 
-		if (control == ID_START)
+	if (control == ID_START)
         {
             if (!global_started)
             {
@@ -544,13 +544,13 @@ static LRESULT CALLBACK cas_dialog__proc(HWND window, UINT message, WPARAM wpara
             return FALSE;
         }
         else if (control == ID_VALUE_TYPE && HIWORD(wparam) == CBN_SELCHANGE)
-		{
-			LRESULT index = SendDlgItemMessageW(window, ID_VALUE_TYPE, CB_GETCURSEL, 0, 0);
+	{
+	    LRESULT index = SendDlgItemMessageW(window, ID_VALUE_TYPE, CB_GETCURSEL, 0, 0);
             global_value_type = (unsigned int)index;
             SetDlgItemTextW(window, ID_RESULT, L"");
             SetDlgItemTextW(window, ID_VALUE, L"");
-			return TRUE;
-		}
+	    return TRUE;
+	}
         else if (control == ID_VALUE)
         {
             cas_dialog__convert_value(window);
@@ -633,27 +633,27 @@ static LRESULT CALLBACK cas_dialog__proc(HWND window, UINT message, WPARAM wpara
             WritePrivateProfileStringW(CAS_DIALOG_INI_SETTINGS_SECTION, CAS_DIALOG_INI_PERIOD_KEY, period_string, global_ini_path);
         }
         else if (control == ID_SHORTCUT_MENU && HIWORD(wparam) == BN_CLICKED)
-		{
-			if (global_config_shortcut.control == 0)
-			{
+	{
+	    if (global_config_shortcut.control == 0)
+	    {
                 CasDialogConfig* dialog_config = (CasDialogConfig*)GetWindowLongPtrW(window, GWLP_USERDATA);
 
-				SetDlgItemTextW(window, control, L"Press new shortcut");
+		SetDlgItemTextW(window, control, L"Press new shortcut");
 
-				global_config_shortcut.control = control;
-				global_config_shortcut.dialog_config = dialog_config;
+		global_config_shortcut.control = control;
+		global_config_shortcut.dialog_config = dialog_config;
 
-				HWND control_window = GetDlgItem(window, control);
-				global_config_shortcut.window_proc = (WNDPROC)GetWindowLongPtrW(control_window, GWLP_WNDPROC);
-				SetWindowLongPtrW(control_window, GWLP_WNDPROC, (LONG_PTR)&cas_dialog__shortcut_proc);
-				cas_disable_hotkeys();
-			}
-		}
+		HWND control_window = GetDlgItem(window, control);
+		global_config_shortcut.window_proc = (WNDPROC)GetWindowLongPtrW(control_window, GWLP_WNDPROC);
+		SetWindowLongPtrW(control_window, GWLP_WNDPROC, (LONG_PTR)&cas_dialog__shortcut_proc);
+		cas_disable_hotkeys();
+	    }
+	}
 
         return TRUE;
     }
     else if (message == WM_TIMER)
-	{
+    {
         if (global_started)
         {
             CasDialogConfig* dialog_config = (CasDialogConfig*)GetWindowLongPtrW(window, GWLP_USERDATA);
@@ -684,116 +684,116 @@ static LRESULT CALLBACK cas_dialog__proc(HWND window, UINT message, WPARAM wpara
 
 static void* cas_dialog__align(BYTE* data, SIZE_T size)
 {
-	SIZE_T pointer = (SIZE_T)data;
-	return data + ((pointer + size - 1) & ~(size - 1)) - pointer;
+    SIZE_T pointer = (SIZE_T)data;
+    return data + ((pointer + size - 1) & ~(size - 1)) - pointer;
 }
 
 static BYTE* cas__do_dialog_item(BYTE* buffer, LPCSTR text, WORD id, WORD control, DWORD style, int x, int y, int w, int h)
 {
-	buffer = cas_dialog__align(buffer, sizeof(DWORD));
+    buffer = cas_dialog__align(buffer, sizeof(DWORD));
 
-	*(DLGITEMTEMPLATE*)buffer = (DLGITEMTEMPLATE)
-	{
-		.style = style | WS_CHILD | WS_VISIBLE,
-		.x = (short)x,
-		.y = (short)y + (control == CONTROL_STATIC ? 2 : 0),
-		.cx = (short)w,
-		.cy = (short)h - (control == CONTROL_EDIT ? 2 : 0) - (control == CONTROL_STATIC ? 2 : 0),
-		.id = id,
-	};
-	buffer += sizeof(DLGITEMTEMPLATE);
+    *(DLGITEMTEMPLATE*)buffer = (DLGITEMTEMPLATE)
+    {
+	.style = style | WS_CHILD | WS_VISIBLE,
+	.x = (short)x,
+	.y = (short)y + (control == CONTROL_STATIC ? 2 : 0),
+	.cx = (short)w,
+	.cy = (short)h - (control == CONTROL_EDIT ? 2 : 0) - (control == CONTROL_STATIC ? 2 : 0),
+	.id = id,
+    };
+    buffer += sizeof(DLGITEMTEMPLATE);
 
-	// window class
-	buffer = cas_dialog__align(buffer, sizeof(WORD));
-	*(WORD*)buffer = 0xffff;
-	buffer += sizeof(WORD);
-	*(WORD*)buffer = control;
-	buffer += sizeof(WORD);
+    // window class
+    buffer = cas_dialog__align(buffer, sizeof(WORD));
+    *(WORD*)buffer = 0xffff;
+    buffer += sizeof(WORD);
+    *(WORD*)buffer = control;
+    buffer += sizeof(WORD);
 
-	// item text
-	buffer = cas_dialog__align(buffer, sizeof(WCHAR));
-	DWORD item_chars = MultiByteToWideChar(CP_UTF8, 0, text, -1, (WCHAR*)buffer, 128);
-	buffer += item_chars * sizeof(WCHAR);
+    // item text
+    buffer = cas_dialog__align(buffer, sizeof(WCHAR));
+    DWORD item_chars = MultiByteToWideChar(CP_UTF8, 0, text, -1, (WCHAR*)buffer, 128);
+    buffer += item_chars * sizeof(WCHAR);
 
-	// create extras
-	buffer = cas_dialog__align(buffer, sizeof(WORD));
-	*(WORD*)buffer = 0;
-	buffer += sizeof(WORD);
+    // create extras
+    buffer = cas_dialog__align(buffer, sizeof(WORD));
+    *(WORD*)buffer = 0;
+    buffer += sizeof(WORD);
 
-	return buffer;
+    return buffer;
 }
 
 static void cas__do_dialog_layout(const CasDialogLayout* dialog_layout, BYTE* buffer, SIZE_T buffer_size)
 {
-	BYTE* end = buffer + buffer_size;
+    BYTE* end = buffer + buffer_size;
 
-	// header
-	DLGTEMPLATE* dialog = (void*)buffer;
-	buffer += sizeof(DLGTEMPLATE);
+    // header
+    DLGTEMPLATE* dialog = (void*)buffer;
+    buffer += sizeof(DLGTEMPLATE);
 
-	// menu
-	buffer = cas_dialog__align(buffer, sizeof(WCHAR));
-	*(WCHAR*)buffer = 0;
-	buffer += sizeof(WCHAR);
+    // menu
+    buffer = cas_dialog__align(buffer, sizeof(WCHAR));
+    *(WCHAR*)buffer = 0;
+    buffer += sizeof(WCHAR);
 
-	// window class
-	buffer = cas_dialog__align(buffer, sizeof(WCHAR));
-	*(WCHAR*)buffer = 0;
-	buffer += sizeof(WCHAR);
+    // window class
+    buffer = cas_dialog__align(buffer, sizeof(WCHAR));
+    *(WCHAR*)buffer = 0;
+    buffer += sizeof(WCHAR);
 
-	// title
-	buffer = cas_dialog__align(buffer, sizeof(WCHAR));
-	DWORD title_chars = MultiByteToWideChar(CP_UTF8, 0, dialog_layout->title, -1, (WCHAR*)buffer, 128);
-	buffer += title_chars * sizeof(WCHAR);
+    // title
+    buffer = cas_dialog__align(buffer, sizeof(WCHAR));
+    DWORD title_chars = MultiByteToWideChar(CP_UTF8, 0, dialog_layout->title, -1, (WCHAR*)buffer, 128);
+    buffer += title_chars * sizeof(WCHAR);
 
-	// font size
-	buffer = cas_dialog__align(buffer, sizeof(WORD));
-	*(WORD*)buffer = dialog_layout->font_size;
-	buffer += sizeof(WORD);
+    // font size
+    buffer = cas_dialog__align(buffer, sizeof(WORD));
+    *(WORD*)buffer = dialog_layout->font_size;
+    buffer += sizeof(WORD);
 
-	// font name
-	buffer = cas_dialog__align(buffer, sizeof(WCHAR));
-	DWORD font_chars = MultiByteToWideChar(CP_UTF8, 0, dialog_layout->font, -1, (WCHAR*)buffer, 128);
-	buffer += font_chars * sizeof(WCHAR);
+    // font name
+    buffer = cas_dialog__align(buffer, sizeof(WCHAR));
+    DWORD font_chars = MultiByteToWideChar(CP_UTF8, 0, dialog_layout->font, -1, (WCHAR*)buffer, 128);
+    buffer += font_chars * sizeof(WCHAR);
 
-	int item_count = 3;
+    int item_count = 3;
 
-	int button_x = PADDING + 2 * (COL_WIDTH + PADDING) + COL2_WIDTH + PADDING - 3 * (PADDING + BUTTON_WIDTH);
-	int button_y = PADDING + ROW_HEIGHT + PADDING + ROW2_HEIGHT + PADDING;
+    int button_x = PADDING + 2 * (COL_WIDTH + PADDING) + COL2_WIDTH + PADDING - 3 * (PADDING + BUTTON_WIDTH);
+    int button_y = PADDING + ROW_HEIGHT + PADDING + ROW2_HEIGHT + PADDING;
 
-	DLGITEMTEMPLATE* start_buffer = cas_dialog__align(buffer, sizeof(DWORD));
-	buffer = cas__do_dialog_item(buffer, "Start", ID_START, CONTROL_BUTTON, WS_TABSTOP | BS_DEFPUSHBUTTON, button_x, button_y, BUTTON_WIDTH, ITEM_HEIGHT);
-	button_x += BUTTON_WIDTH + PADDING;
+    DLGITEMTEMPLATE* start_buffer = cas_dialog__align(buffer, sizeof(DWORD));
+    buffer = cas__do_dialog_item(buffer, "Start", ID_START, CONTROL_BUTTON, WS_TABSTOP | BS_DEFPUSHBUTTON, button_x, button_y, BUTTON_WIDTH, ITEM_HEIGHT);
+    button_x += BUTTON_WIDTH + PADDING;
     (void)start_buffer;
 
-	DLGITEMTEMPLATE* stop_buffer = cas_dialog__align(buffer, sizeof(DWORD));
-	buffer = cas__do_dialog_item(buffer, "Stop", ID_STOP, CONTROL_BUTTON, WS_TABSTOP | BS_PUSHBUTTON, button_x, button_y, BUTTON_WIDTH, ITEM_HEIGHT);
-	button_x += BUTTON_WIDTH + PADDING;
+    DLGITEMTEMPLATE* stop_buffer = cas_dialog__align(buffer, sizeof(DWORD));
+    buffer = cas__do_dialog_item(buffer, "Stop", ID_STOP, CONTROL_BUTTON, WS_TABSTOP | BS_PUSHBUTTON, button_x, button_y, BUTTON_WIDTH, ITEM_HEIGHT);
+    button_x += BUTTON_WIDTH + PADDING;
     (void)stop_buffer;
 
-	DLGITEMTEMPLATE* cancel_buffer = cas_dialog__align(buffer, sizeof(DWORD));
-	buffer = cas__do_dialog_item(buffer, "Cancel", ID_CANCEL, CONTROL_BUTTON, WS_TABSTOP | BS_PUSHBUTTON, button_x, button_y, BUTTON_WIDTH, ITEM_HEIGHT);
-	button_x += BUTTON_WIDTH + PADDING;
+    DLGITEMTEMPLATE* cancel_buffer = cas_dialog__align(buffer, sizeof(DWORD));
+    buffer = cas__do_dialog_item(buffer, "Cancel", ID_CANCEL, CONTROL_BUTTON, WS_TABSTOP | BS_PUSHBUTTON, button_x, button_y, BUTTON_WIDTH, ITEM_HEIGHT);
+    button_x += BUTTON_WIDTH + PADDING;
     (void)cancel_buffer;
 
-	for (const CasDialogGroup* group = dialog_layout->groups; group->caption; group++)
+    for (const CasDialogGroup* group = dialog_layout->groups; group->caption; group++)
+    {
+	int x = group->rect.left + PADDING;
+	int y = group->rect.top + PADDING;
+	int w = group->rect.width;
+	int h = group->rect.height;
+
+	buffer = cas__do_dialog_item(buffer, group->caption, (WORD)-1, CONTROL_BUTTON, BS_GROUPBOX, x, y, w, h);
+	item_count++;
+
+	x += PADDING;
+	y += ITEM_HEIGHT - PADDING;
+	w -= 2 * PADDING;
+
+	for (unsigned int item_index = 0; item_index < ARRAY_COUNT(group->items); item_index++)
 	{
-		int x = group->rect.left + PADDING;
-		int y = group->rect.top + PADDING;
-		int w = group->rect.width;
-		int h = group->rect.height;
-
-		buffer = cas__do_dialog_item(buffer, group->caption, (WORD)-1, CONTROL_BUTTON, BS_GROUPBOX, x, y, w, h);
-		item_count++;
-
-		x += PADDING;
-		y += ITEM_HEIGHT - PADDING;
-		w -= 2 * PADDING;
-
-		for (unsigned int item_index = 0; item_index < ARRAY_COUNT(group->items); item_index++)
-		{
             const CasDialogItem* item = group->items + item_index;
-			int has_number = !!(item->item & ITEM_NUMBER);
+	    int has_number = !!(item->item & ITEM_NUMBER);
             int has_string = !!(item->item & ITEM_STRING);
             int has_const_string = !!(item->item & ITEM_CONST_STRING);
             int has_label = !!(item->item & ITEM_LABEL);
@@ -803,23 +803,23 @@ static void cas__do_dialog_layout(const CasDialogLayout* dialog_layout, BYTE* bu
             int has_hotkey = !!(item->item & ITEM_HOTKEY);
 
 
-			int item_x = x;
-			int item_w = w;
-			int item_id = item->id;
+	    int item_x = x;
+	    int item_w = w;
+	    int item_id = item->id;
 
             if (has_checkbox)
-			{
-				buffer = cas__do_dialog_item(buffer, item->text, (WORD)item_id, (WORD)CONTROL_BUTTON, WS_TABSTOP | BS_AUTOCHECKBOX, item_x, y, item_w, ITEM_HEIGHT);
-				item_count++;
-				item_id++;
-			}
+	    {
+		buffer = cas__do_dialog_item(buffer, item->text, (WORD)item_id, (WORD)CONTROL_BUTTON, WS_TABSTOP | BS_AUTOCHECKBOX, item_x, y, item_w, ITEM_HEIGHT);
+		item_count++;
+		item_id++;
+	    }
 
             if (has_label)
             {
                 buffer = cas__do_dialog_item(buffer, item->text, (WORD)-1, (WORD)CONTROL_STATIC, 0, item_x, y, item->width, ITEM_HEIGHT);
-				item_count++;
+		item_count++;
                 item_x += item->width + PADDING;
-				item_w -= item->width + PADDING;
+		item_w -= item->width + PADDING;
             }
 
             if (has_string)
@@ -832,7 +832,7 @@ static void cas__do_dialog_layout(const CasDialogLayout* dialog_layout, BYTE* bu
                 }
 
                 buffer = cas__do_dialog_item(buffer, "", (WORD)item_id, (WORD)CONTROL_EDIT, style, item_x, y, item_w, ITEM_HEIGHT);
-				item_count++;
+		item_count++;
             }
 
             if (has_const_string)
@@ -850,40 +850,40 @@ static void cas__do_dialog_layout(const CasDialogLayout* dialog_layout, BYTE* bu
                 }
 
                 buffer = cas__do_dialog_item(buffer, "", (WORD)item_id, (WORD)CONTROL_STATIC, style, item_x, y, item_w, ITEM_HEIGHT);
-				item_count++;
+		item_count++;
             }
 
-			if (has_number)
-			{
-				buffer = cas__do_dialog_item(buffer, "", (WORD)item_id, (WORD)CONTROL_EDIT, WS_TABSTOP | WS_BORDER | ES_NUMBER, item_x, y, item_w, ITEM_HEIGHT);
-				item_count++;
-			}
+	    if (has_number)
+	    {
+		buffer = cas__do_dialog_item(buffer, "", (WORD)item_id, (WORD)CONTROL_EDIT, WS_TABSTOP | WS_BORDER | ES_NUMBER, item_x, y, item_w, ITEM_HEIGHT);
+		item_count++;
+	    }
 
             if (has_hotkey)
-			{
-				buffer = cas__do_dialog_item(buffer, "", (WORD)item_id, (WORD)CONTROL_BUTTON, WS_TABSTOP, item_x, y, item_w, ITEM_HEIGHT);
-				item_count++;
-			}
+	    {
+		buffer = cas__do_dialog_item(buffer, "", (WORD)item_id, (WORD)CONTROL_BUTTON, WS_TABSTOP, item_x, y, item_w, ITEM_HEIGHT);
+		item_count++;
+	    }
 
             if (has_combobox)
-			{
-				buffer = cas__do_dialog_item(buffer, "", (WORD)item_id, (WORD)CONTROL_COMBOBOX, WS_TABSTOP | CBS_DROPDOWNLIST | CBS_HASSTRINGS, item_x, y, item_w, ITEM_HEIGHT);
-				item_count++;
-			}
+	    {
+		buffer = cas__do_dialog_item(buffer, "", (WORD)item_id, (WORD)CONTROL_COMBOBOX, WS_TABSTOP | CBS_DROPDOWNLIST | CBS_HASSTRINGS, item_x, y, item_w, ITEM_HEIGHT);
+		item_count++;
+	    }
 
-			y += ITEM_HEIGHT;
-		}
+	    y += ITEM_HEIGHT;
 	}
+    }
 
-	*dialog = (DLGTEMPLATE)
-	{
-		.style = DS_SETFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU,
-		.cdit = (WORD)item_count,
-		.cx = PADDING + COL_WIDTH + PADDING + COL_WIDTH + PADDING + COL2_WIDTH + PADDING,
-		.cy = PADDING + ROW_HEIGHT + PADDING + ROW2_HEIGHT + PADDING + ITEM_HEIGHT + PADDING,
-	};
+    *dialog = (DLGTEMPLATE)
+    {
+	.style = DS_SETFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU,
+	.cdit = (WORD)item_count,
+	.cx = PADDING + COL_WIDTH + PADDING + COL_WIDTH + PADDING + COL2_WIDTH + PADDING,
+	.cy = PADDING + ROW_HEIGHT + PADDING + ROW2_HEIGHT + PADDING + ITEM_HEIGHT + PADDING,
+    };
 
-	ASSERT(buffer <= end);
+    ASSERT(buffer <= end);
 }
 
 int cas_dialog_config_load(CasDialogConfig* dialog_config)
@@ -891,12 +891,12 @@ int cas_dialog_config_load(CasDialogConfig* dialog_config)
     int result = TRUE;
     WIN32_FILE_ATTRIBUTE_DATA data;
 
-	if (!GetFileAttributesExW(global_ini_path, GetFileExInfoStandard, &data))
-	{
+    if (!GetFileAttributesExW(global_ini_path, GetFileExInfoStandard, &data))
+    {
         MessageBoxW(0, L"cas.ini may be deleted.", L"Warning!", MB_ICONWARNING);
-		// .ini file deleted?
-		return FALSE;
-	}
+	// .ini file deleted?
+	return FALSE;
+    }
 
     WCHAR settings[(sizeof(dialog_config->processes) + sizeof(dialog_config->affinity_masks))] = { 0 };
 
@@ -962,11 +962,11 @@ int cas_dialog_config_load(CasDialogConfig* dialog_config)
 
 LRESULT cas_dialog_show(CasDialogConfig* dialog_config)
 {
-	if (global_dialog_window)
-	{
+    if (global_dialog_window)
+    {
         cas_dialog__end(global_dialog_window);
-		return FALSE;
-	}
+	return FALSE;
+    }
 
     char* title[64] = { 0 };
     snprintf((char*)title, sizeof(title),
@@ -978,28 +978,28 @@ LRESULT cas_dialog_show(CasDialogConfig* dialog_config)
     snprintf((char*)auto_start, sizeof(auto_start),
              "Auto-start%s", global_is_elavated ? "" : " (run as administrator)");
 
-	CasDialogLayout dialog_layout = (CasDialogLayout)
+    CasDialogLayout dialog_layout = (CasDialogLayout)
+    {
+	.title = (const char*)title,
+	.font = "Segoe UI",
+	.font_size = 9,
+	.groups = (CasDialogGroup[])
 	{
-		.title = (const char*)title,
-		.font = "Segoe UI",
-		.font_size = 9,
-		.groups = (CasDialogGroup[])
-		{
             {
-				.caption = "Processes",
-				.rect = { 0, 0, COL_WIDTH, ROW_HEIGHT },
-			},
-			{
-				.caption = (const char*)affinity_masks_caption,
-				.rect = { COL_WIDTH + PADDING, 0, COL_WIDTH, ROW_HEIGHT },
-			},
+		.caption = "Processes",
+		.rect = { 0, 0, COL_WIDTH, ROW_HEIGHT },
+	    },
+	    {
+		.caption = (const char*)affinity_masks_caption,
+		.rect = { COL_WIDTH + PADDING, 0, COL_WIDTH, ROW_HEIGHT },
+	    },
             {
-				.caption = "Done",
-				.rect = { (COL_WIDTH + PADDING) * 2, 0, COL2_WIDTH, ROW_HEIGHT },
-			},
+		.caption = "Done",
+		.rect = { (COL_WIDTH + PADDING) * 2, 0, COL2_WIDTH, ROW_HEIGHT },
+	    },
             {
-				.caption = "Settings",
-				.rect = { 0, ROW_HEIGHT, COL_WIDTH, ROW2_HEIGHT },
+		.caption = "Settings",
+		.rect = { 0, ROW_HEIGHT, COL_WIDTH, ROW2_HEIGHT },
                 .items =
                 {
                     { "Period (sec)", ID_PERIOD,     ITEM_NUMBER | ITEM_LABEL, 48 },
@@ -1008,10 +1008,10 @@ LRESULT cas_dialog_show(CasDialogConfig* dialog_config)
                     { (const char*)auto_start,   ID_AUTO_START, ITEM_CHECKBOX },
                     { NULL },
                 },
-			},
+	    },
             {
-				.caption = "Convert",
-				.rect = { COL_WIDTH + PADDING, ROW_HEIGHT, (COL_WIDTH + PADDING) + COL2_WIDTH, ROW2_HEIGHT },
+		.caption = "Convert",
+		.rect = { COL_WIDTH + PADDING, ROW_HEIGHT, (COL_WIDTH + PADDING) + COL2_WIDTH, ROW2_HEIGHT },
                 .items =
                 {
                     { "Value Type",  ID_VALUE_TYPE,  ITEM_COMBOBOX | ITEM_LABEL, 48 },
@@ -1019,10 +1019,10 @@ LRESULT cas_dialog_show(CasDialogConfig* dialog_config)
                     { "Result",      ID_RESULT,      ITEM_CONST_STRING | ITEM_LABEL, 48 },
                     { NULL },
                 },
-			},
-			{ NULL },
-		},
-	};
+	    },
+	    { NULL },
+	},
+    };
 
     for (unsigned int i = 0; i < MAX_ITEMS; ++i)
     {
@@ -1035,10 +1035,10 @@ LRESULT cas_dialog_show(CasDialogConfig* dialog_config)
         *done_item = (CasDialogItem){ "", (WORD)(ID_SET + i), ITEM_CONST_STRING | ITEM_CENTER };
     }
 
-	BYTE __declspec(align(4)) buffer[4096];
-	cas__do_dialog_layout(&dialog_layout, buffer, sizeof(buffer));
+    BYTE __declspec(align(4)) buffer[4096];
+    cas__do_dialog_layout(&dialog_layout, buffer, sizeof(buffer));
 
-	return DialogBoxIndirectParamW(GetModuleHandleW(NULL), (LPCDLGTEMPLATEW)buffer, NULL, cas_dialog__proc, (LPARAM)dialog_config);
+    return DialogBoxIndirectParamW(GetModuleHandleW(NULL), (LPCDLGTEMPLATEW)buffer, NULL, cas_dialog__proc, (LPARAM)dialog_config);
 }
 
 void cas_dialog_init(CasDialogConfig* dialog_config, WCHAR* ini_path, HICON icon)

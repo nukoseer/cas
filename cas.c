@@ -157,8 +157,8 @@ static BOOL cas__set_cpu_affinity(PROCESSENTRY32W* entry, unsigned int desired_a
 {
     BOOL set = 0;
     HANDLE handle_process = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_SET_INFORMATION, FALSE, entry->th32ProcessID);
-    DWORD process_affinity_mask = 0;
-    DWORD system_affinity_mask = 0;
+    DWORD_PTR process_affinity_mask = 0;
+    DWORD_PTR system_affinity_mask = 0;
 
     if (handle_process)
     {
@@ -236,17 +236,17 @@ static HANDLE cas__create_timer(void)
 
 static void cas__show_notification(HWND window_handle, LPCWSTR message, LPCWSTR title, DWORD flags)
 {
-	NOTIFYICONDATAW data =
-	{
-		.cbSize = sizeof(data),
-		.hWnd = window_handle,
-		.uFlags = NIF_INFO | NIF_TIP,
-		.dwInfoFlags = flags, // NIIF_INFO, NIIF_WARNING, NIIF_ERROR
-	};
-	StrCpyNW(data.szTip, CAS_NAME, ARRAY_COUNT(data.szTip));
-	StrCpyNW(data.szInfo, message, ARRAY_COUNT(data.szInfo));
-	StrCpyNW(data.szInfoTitle, title ? title : CAS_NAME, ARRAY_COUNT(data.szInfoTitle));
-	Shell_NotifyIconW(NIM_MODIFY, &data);
+    NOTIFYICONDATAW data =
+    {
+	.cbSize = sizeof(data),
+	.hWnd = window_handle,
+	.uFlags = NIF_INFO | NIF_TIP,
+	.dwInfoFlags = flags, // NIIF_INFO, NIIF_WARNING, NIIF_ERROR
+    };
+    StrCpyNW(data.szTip, CAS_NAME, ARRAY_COUNT(data.szTip));
+    StrCpyNW(data.szInfo, message, ARRAY_COUNT(data.szInfo));
+    StrCpyNW(data.szInfoTitle, title ? title : CAS_NAME, ARRAY_COUNT(data.szInfoTitle));
+    Shell_NotifyIconW(NIM_MODIFY, &data);
 }
 
 static void cas__add_tray_icon(HWND window_handle)
@@ -276,12 +276,12 @@ static void cas__add_tray_icon(HWND window_handle)
 
 static void cas__remove_tray_icon(HWND window_handle)
 {
-	NOTIFYICONDATAW data =
-	{
-		.cbSize = sizeof(data),
-		.hWnd = window_handle,
-	};
-	Shell_NotifyIconW(NIM_DELETE, &data);
+    NOTIFYICONDATAW data =
+    {
+	.cbSize = sizeof(data),
+	.hWnd = window_handle,
+    };
+    Shell_NotifyIconW(NIM_DELETE, &data);
 }
 
 static LRESULT CALLBACK cas__window_proc(HWND window_handle, UINT message, WPARAM wparam, LPARAM lparam)
@@ -292,55 +292,55 @@ static LRESULT CALLBACK cas__window_proc(HWND window_handle, UINT message, WPARA
         return 0;
     }
     else if (message == WM_DESTROY)
-	{
-		cas__remove_tray_icon(window_handle);
-		PostQuitMessage(0);
+    {
+	cas__remove_tray_icon(window_handle);
+	PostQuitMessage(0);
 
-		return 0;
-	}
+	return 0;
+    }
     else if (message == WM_CAS_ALREADY_RUNNING)
-	{
-		cas__show_notification(window_handle, L"cas is already running!", 0, NIIF_INFO);
+    {
+	cas__show_notification(window_handle, L"cas is already running!", 0, NIIF_INFO);
 
-		return 0;
-	}
+	return 0;
+    }
     else if (message == WM_CAS_COMMAND)
+    {
+	if (LOWORD(lparam) == WM_LBUTTONUP)
 	{
-		if (LOWORD(lparam) == WM_LBUTTONUP)
-		{
             cas_dialog_show(&global_cas.dialog_config);
-		}
+	}
         else if (LOWORD(lparam) == WM_RBUTTONUP)
-		{
-			HMENU menu = CreatePopupMenu();
-			ASSERT(menu);
+	{
+	    HMENU menu = CreatePopupMenu();
+	    ASSERT(menu);
 
             AppendMenuW(menu, MF_STRING, CMD_CAS, CAS_NAME);
-			AppendMenuW(menu, MF_SEPARATOR, 0, NULL);
-			AppendMenuW(menu, MF_STRING, CMD_QUIT, L"Exit");
+	    AppendMenuW(menu, MF_SEPARATOR, 0, NULL);
+	    AppendMenuW(menu, MF_STRING, CMD_QUIT, L"Exit");
 
-			POINT mouse;
-			GetCursorPos(&mouse);
+	    POINT mouse;
+	    GetCursorPos(&mouse);
 
-			SetForegroundWindow(window_handle);
-			int command = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_NONOTIFY, mouse.x, mouse.y, 0, window_handle, NULL);
+	    SetForegroundWindow(window_handle);
+	    int command = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_NONOTIFY, mouse.x, mouse.y, 0, window_handle, NULL);
 
             if (command == CMD_CAS)
-			{
-				ShellExecuteW(NULL, L"open", CAS_URL, NULL, NULL, SW_SHOWNORMAL);
-			}
-			else if (command == CMD_QUIT)
-			{
-				DestroyWindow(window_handle);
-			}
+	    {
+		ShellExecuteW(NULL, L"open", CAS_URL, NULL, NULL, SW_SHOWNORMAL);
+	    }
+	    else if (command == CMD_QUIT)
+	    {
+		DestroyWindow(window_handle);
+	    }
 
             DestroyMenu(menu);
-		}
+	}
 
         return 0;
     }
     else if (message == WM_HOTKEY)
-	{
+    {
         if (wparam == HOT_MENU)
         {
             cas_dialog_show(&global_cas.dialog_config);
@@ -512,7 +512,7 @@ HRESULT cas_create_admin_task(void)
                                                 TASK_LOGON_INTERACTIVE_TOKEN, empty,
                                                 &task_registered_task);
 
-cleanup_exit:
+ cleanup_exit:
 
     if (task_registered_task)
         IRegisteredTask_Release(task_registered_task);
@@ -562,7 +562,12 @@ HRESULT cas_delete_admin_task(void)
 
     status = ITaskFolder_DeleteTask(task_folder, CAS_NAME, 0);
 
-cleanup_exit:
+    if (status == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND))
+    {
+        status = S_OK;
+    }
+
+ cleanup_exit:
 
     if (task_folder)
         ITaskFolder_Release(task_folder);
@@ -574,19 +579,19 @@ cleanup_exit:
 
 void cas_disable_hotkeys(void)
 {
-	UnregisterHotKey(global_cas.window_handle, HOT_MENU);
+    UnregisterHotKey(global_cas.window_handle, HOT_MENU);
 }
 
 BOOL cas_enable_hotkeys(void)
 {
-	BOOL success = TRUE;
+    BOOL success = TRUE;
     
-	if (global_cas.dialog_config.menu_shortcut)
-	{
-		success = success && RegisterHotKey(global_cas.window_handle, HOT_MENU, HOT_GET_MOD(global_cas.dialog_config.menu_shortcut), HOT_GET_KEY(global_cas.dialog_config.menu_shortcut));
-	}
+    if (global_cas.dialog_config.menu_shortcut)
+    {
+	success = success && RegisterHotKey(global_cas.window_handle, HOT_MENU, HOT_GET_MOD(global_cas.dialog_config.menu_shortcut), HOT_GET_KEY(global_cas.dialog_config.menu_shortcut));
+    }
 
-	return success;
+    return success;
 }
 
 #ifdef _DEBUG
@@ -598,29 +603,29 @@ void WinMainCRTStartup(void)
 {
 #endif
     WNDCLASSEXW window_class =
-	{
-		.cbSize = sizeof(window_class),
-		.lpfnWndProc = &cas__window_proc,
-		.hInstance = GetModuleHandle(0),
-		.lpszClassName = CAS_NAME,
-	};
-
+    {
+	.cbSize = sizeof(window_class),
+	.lpfnWndProc = &cas__window_proc,
+	.hInstance = GetModuleHandle(0),
+	.lpszClassName = CAS_NAME,
+    };
+    
     HWND existing = FindWindowW(window_class.lpszClassName, NULL);
-	if (existing)
-	{
-		PostMessageW(existing, WM_CAS_ALREADY_RUNNING, 0, 0);
-		ExitProcess(0);
-	}
+    if (existing)
+    {
+	PostMessageW(existing, WM_CAS_ALREADY_RUNNING, 0, 0);
+	ExitProcess(0);
+    }
 
     ATOM atom = RegisterClassExW(&window_class);
-	ASSERT(atom);
+    ASSERT(atom);
 
-	RegisterWindowMessageW(L"TaskbarCreated");
+    RegisterWindowMessageW(L"TaskbarCreated");
 
     global_cas.icon = LoadIconW(GetModuleHandleW(0), MAKEINTRESOURCEW(1));
     global_cas.window_handle = CreateWindowExW(0, window_class.lpszClassName, window_class.lpszClassName, WS_POPUP,
-                                                CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
-                                                NULL, NULL, window_class.hInstance, NULL);
+                                               CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+                                               NULL, NULL, window_class.hInstance, NULL);
     global_cas.timer_handle = cas__create_timer();
 
     CloseHandle(CreateThread(0, 0, (LPTHREAD_START_ROUTINE)&cas__timer_thread_proc, (LPVOID)&global_cas, 0, 0));
@@ -637,7 +642,7 @@ void WinMainCRTStartup(void)
     cas_dialog_init(&global_cas.dialog_config, global_cas.ini_path, global_cas.icon);
 
     for (;;)
-	{
+    {
         MSG message;
         BOOL result = GetMessageW(&message, NULL, 0, 0);
 
@@ -649,5 +654,5 @@ void WinMainCRTStartup(void)
 
         TranslateMessage(&message);
         DispatchMessageW(&message);
-	}
+    }
 }
